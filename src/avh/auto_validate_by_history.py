@@ -214,7 +214,7 @@ class AVH:
     def _generate_constraint_space(self, history: List[pd.Series]) -> List[Constraint]:
         Q = []
         for metric in self.M:
-            if not metric.is_column_compatable(history[0]):
+            if not metric.is_column_compatable(history[0].dtype):
                 continue
 
             metric_history = metric.calculate(history)
