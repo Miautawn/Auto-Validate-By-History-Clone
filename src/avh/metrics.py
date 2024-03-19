@@ -62,13 +62,6 @@ class DistinctRatio(Metric):
     def _calculate(self, column: pd.Series) -> float:
         return column.nunique(dropna=False) / len(column)
 
-# class CompleteRatio(Metric):
-#     @classmethod
-#     def _calculate(self, column: pd.Series) -> float:
-#         if self._is_empty(column):
-#             return 0.0
-#         return np.mean(column.notna())
-
 class CompleteRatio(Metric):
     @classmethod
     def _calculate(self, column: pd.Series) -> float:
@@ -82,22 +75,6 @@ class Min(NumericMetric):
         if self._is_empty(column):
             return 0.0
         return column.min()
-
-# class Min(NumericMetric):
-#     @classmethod
-#     def _calculate(self, column: pd.Series) -> float:
-#         start = time.time()
-#         decision = self._is_empty(column)
-#         end = time.time()
-#         print(f"Empty check took {end-start}...")
-#         if decision:
-#             return 0.0
-
-#         start = time.time()
-#         value = np.min(column)
-#         end = time.time()
-#         print(f"Calculation took {end-start}...")
-#         return value
 
 class Max(NumericMetric):
     @classmethod
@@ -134,7 +111,7 @@ class Range(NumericMetric):
     def _calculate(self, column: pd.Series) -> float:
         if self._is_empty(column):
             return 0.0
-        return np.max(column) - np.min(column)
+        return column.max() - column.min()
 
 
 class DistinctCount(CategoricalMetric):
