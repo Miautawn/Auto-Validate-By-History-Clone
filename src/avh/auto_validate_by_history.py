@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict, Tuple, Callable, Optional, Set
 import multiprocessing as mp
 import time
@@ -30,6 +31,8 @@ class AVH:
     Returns a dictionary with ConjuctivDQProgram for a column
     """
 
+    logger = logging.getLogger(f"{__name__}.AVH")
+
     def __init__(
         self,
         M: List[Metric],
@@ -47,6 +50,9 @@ class AVH:
             DC if DC else self._get_default_issue_transformer()
         )
 
+    def enable_debug(self, enable: bool):
+        self.logger.setLevel(logging.DEBUG if enable else logging.INFO)
+
     def generate(
         self, history: List[pd.DataFrame], fpr_target: float, multiprocess=False
     ) -> Dict[str, ConjuctivDQProgram]:
@@ -61,7 +67,7 @@ class AVH:
                 [run[column] for run in history[:-1]]
             )
             end = time.time()
-            print(f"Q generation took: {end-start}")
+            DEBUG_MODE and print(f"Q generation took: {end-start}")
 
             start = time.time()
             PS[column] = self._generate_conjuctive_dq_program(
@@ -213,6 +219,8 @@ class AVH:
 
             metric_history = metric.calculate(history)
             preprocessed_metric_history = None
+
+            # TODO: put this into another function
             lag, preprocessing_func = 0, utils.identity
             if self.time_differencing:
                 is_stationary, lag, preprocessing_func = self._time_series_difference(
