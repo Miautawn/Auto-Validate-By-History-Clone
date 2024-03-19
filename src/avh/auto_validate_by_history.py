@@ -218,20 +218,20 @@ class AVH:
                 continue
 
             metric_history = metric.calculate(history)
-            preprocessed_metric_history = None
+            # preprocessed_metric_history = None
 
             # TODO: put this into another function
-            lag, preprocessing_func = 0, utils.identity
-            if self.time_differencing:
-                is_stationary, lag, preprocessing_func = self._time_series_difference(
-                    metric_history
-                )
-                if not is_stationary:
-                    continue
+            # lag, preprocessing_func = 0, utils.identity
+            # if self.time_differencing:
+            #     is_stationary, lag, preprocessing_func = self._time_series_difference(
+            #         metric_history
+            #     )
+            #     if not is_stationary:
+            #         continue
 
-                preprocessed_metric_history = diff(
-                    preprocessing_func(metric_history), lag
-                )
+            #     preprocessed_metric_history = diff(
+            #         preprocessing_func(metric_history), lag
+            #     )
 
             for constraint_estimator in self.E:
                 if not constraint_estimator.is_metric_compatable(metric):
@@ -255,13 +255,13 @@ class AVH:
                 for beta in np.linspace(beta_start, beta_end, (10 if std != 0.0 else 1)):
                     q = constraint_estimator(
                         metric,
-                        differencing_lag=lag,
-                        preprocessing_func=preprocessing_func,
+                        # differencing_lag=lag,
+                        # preprocessing_func=preprocessing_func,
                     ).fit(
                         metric_history,
                         beta=beta,
-                        hotload_history=True,
-                        preprocessed_metric_history=preprocessed_metric_history,
+                        # hotload_history=True,
+                        # preprocessed_metric_history=preprocessed_metric_history,
                     )
                     Q.append(q)
         return Q

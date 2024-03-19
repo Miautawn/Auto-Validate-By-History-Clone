@@ -33,12 +33,12 @@ class Constraint(BaseEstimator):
     def __init__(
         self,
         metric: metrics.Metric,
-        differencing_lag: int = 0,
-        preprocessing_func: Callable = utils.identity,
+        # differencing_lag: int = 0,
+        # preprocessing_func: Callable = utils.identity,
     ):
         self.metric = metric
-        self.differencing_lag = differencing_lag
-        self.preprocessing_func = preprocessing_func
+        # self.differencing_lag = differencing_lag
+        # self.preprocessing_func = preprocessing_func
 
     @classmethod
     def is_metric_compatable(self, metric: metrics.Metric):
@@ -67,8 +67,8 @@ class Constraint(BaseEstimator):
         self,
         column_history,
         y=None,
-        hotload_history: bool = False,
-        preprocessed_metric_history: np.array = None,
+        # hotload_history: bool = False,
+        # preprocessed_metric_history: np.array = None,
         **kwargs,
     ) -> None:
         assert self.is_metric_compatable(self.metric), (
@@ -76,27 +76,31 @@ class Constraint(BaseEstimator):
             f"{self.__class__.__name__}"
         )
 
-        self.metric_history_raw_ = (
-            column_history if hotload_history else self.metric.calculate(column_history)
-        )
-        self.metric_history_post_ = (
-            preprocessed_metric_history
-            if preprocessed_metric_history
-            else self._preprocess(self.metric_history_raw_, inference=False)
-        )
+        self._fit(column_history, **kwargs)
 
-        self._fit(self.metric_history_post_, **kwargs)
+        # self.metric_history_raw_ = (
+        #     column_history if hotload_history else self.metric.calculate(column_history)
+        # )
+        # self.metric_history_post_ = (
+        #     preprocessed_metric_history
+        #     if preprocessed_metric_history
+        #     else self._preprocess(self.metric_history_raw_, inference=False)
+        # )
+
+        # self._fit(self.metric_history_post_, **kwargs)
         return self
 
     def predict(self, column: pd.Series, **kwargs) -> bool:
         check_is_fitted(self)
 
-        metric_raw = self.metric.calculate(column)
-        metric_post = self._preprocess(metric_raw)
+        prediction = self._predict(self.metric.calculate(column), **kwargs)
 
-        prediction = self._predict(metric_post, **kwargs)
-        self.metric_history_raw_.append(metric_raw)
-        self.metric_history_post_.append(metric_post)
+        # metric_raw = self.metric.calculate(column)
+        # metric_post = self._preprocess(metric_raw)
+
+        # prediction = self._predict(metric_post, **kwargs)
+        # self.metric_history_raw_.append(metric_raw)
+        # self.metric_history_post_.append(metric_post)
         return prediction
 
     def _fit(self, metric_history: List[float], **kwargs):
@@ -108,20 +112,20 @@ class Constraint(BaseEstimator):
     def _predict(self, m: float, **kwargs) -> bool:
         return self.u_lower_ <= m <= self.u_upper_
 
-    def _preprocess(
-        self, data: Union[List[float], float], inference=True
-    ) -> Union[List[float], float]:
-        data = self.preprocessing_func(data)
+    # def _preprocess(
+    #     self, data: Union[List[float], float], inference=True
+    # ) -> Union[List[float], float]:
+    #     data = self.preprocessing_func(data)
 
-        if self.differencing_lag != 0:
-            if inference:
-                data = data - self.preprocessing_func(
-                    self.metric_history_raw_[-self.differencing_lag]
-                )
-            else:
-                data = diff(data, self.differencing_lag)
+    #     if self.differencing_lag != 0:
+    #         if inference:
+    #             data = data - self.preprocessing_func(
+    #                 self.metric_history_raw_[-self.differencing_lag]
+    #             )
+    #         else:
+    #             data = diff(data, self.differencing_lag)
 
-        return data
+    #     return data
 
 
 class ConstantConstraint(Constraint):
