@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Tuple, Callable, Optional, Set
+from typing import List, Dict, Tuple, Callable, Optional, Set, Union
 import multiprocessing as mp
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,15 +16,23 @@ from avh.constraints import (
     ChebyshevConstraint,
     CLTConstraint
 )
-from avh.data_quality_issues import (
-    DQIssueDatasetTransformer,
+from avh.data_issues import (
+    IssueTransfomer,
+    NumericIssueTransformer,
+    CategoricalIssueTransformer,
+    IncreasedNulls,
     SchemaChange,
+    DistributionChange,
     UnitChange,
     CasingChange,
-    IncreasedNulls,
-    VolumeChange,
-    DistributionChange
+    DQIssueDatasetGenerator,
+    VolumeChangeUpsample,
+    VolumeChangeDownsample,
+    NumericPerturbation,
 )
+
+from copy import deepcopy
+from avh.aliases import Seed
 
 class AVH:
     """
@@ -33,48 +41,68 @@ class AVH:
 
     logger = logging.getLogger(f"{__name__}.AVH")
 
+    def _enable_debug(self, enable: bool):
+        self.logger.setLevel(logging.DEBUG if enable else logging.INFO)
+
+    def _reset_verbosity_states(self):
+        self._enable_debug(False)
+
     def __init__(
         self,
         M: List[Metric],
         E: List[Constraint],
-        DC: Optional[DQIssueDatasetTransformer] = None,
+        DC: Optional[DQIssueDatasetGenerator] = None,
         columns: Optional[List[str]] = None,
         time_differencing: bool = False,
+        random_state: Seed = None,
+        verbose: int = 1
     ):
+
         self.M = M
         self.E = E
+        self.DC = DC
         self.columns = columns
         self.time_differencing = time_differencing
+        self.random_state = random_state
 
-        self.issue_dataset_generator = (
-            DC if DC else self._get_default_issue_transformer()
-        )
+        self.verbose = verbose
 
-    def enable_debug(self, enable: bool):
-        self.logger.setLevel(logging.DEBUG if enable else logging.INFO)
+        if self.DC is None:
+            self.DC = self._get_default_issue_transformer()
 
+    @property
+    def verbose(self) -> int:
+        if self._verbose == 0:
+            return False
+        return True
+
+    @verbose.setter
+    def verbose(self, level: Union[int, bool]):
+        assert level >= 0, "Verbosity level must be a positive integer"
+
+        self._reset_verbosity_states()
+        self._verbose = level
+
+        if level >= 2:
+            self._enable_debug(True)
+
+    @utils.debug_timeit(f"{__name__}.AVH")
     def generate(
-        self, history: List[pd.DataFrame], fpr_target: float, multiprocess=False
+        self, history: List[pd.DataFrame], fpr_target: float
     ) -> Dict[str, ConjuctivDQProgram]:
         PS = {}
 
-        DC = self.issue_dataset_generator.fit_transform(history[-1])
+        DC = self.DC.generate(history[-1])
         columns = self.columns if self.columns else list(history[0].columns)
 
-        for column in tqdm(columns, "Generating P(S for columns..."):
-            start = time.time()
+        for column in tqdm(columns, "Generating P(S for columns...", disable=not self.verbose):
             Q = self._generate_constraint_space(
                 [run[column] for run in history[:-1]]
             )
-            end = time.time()
-            DEBUG_MODE and print(f"Q generation took: {end-start}")
 
-            start = time.time()
             PS[column] = self._generate_conjuctive_dq_program(
                 Q, DC[column], fpr_target
             )
-            end = time.time()
-            print(f"PS generation took: {end-start}")
 
         return PS
 
@@ -210,7 +238,7 @@ class AVH:
         Q = self._generate_constraint_space(history)
         return column, self._generate_conjuctive_dq_program(Q, DC, fpr_target)
 
-    # @utils.timeit_decorator
+    @utils.debug_timeit(f"{__name__}.AVH")
     def _generate_constraint_space(self, history: List[pd.Series]) -> List[Constraint]:
         Q = []
         for metric in self.M:
@@ -218,6 +246,7 @@ class AVH:
                 continue
 
             metric_history = metric.calculate(history)
+            metric_history_std = np.nanstd(metric_history)
             # preprocessed_metric_history = None
 
             # TODO: put this into another function
@@ -237,22 +266,23 @@ class AVH:
                 if not constraint_estimator.is_metric_compatable(metric):
                     continue
 
+                # TODO: improve this to work with more general cases
                 # 'intelligent' beta hyperparameter search optimisation.
                 #    The justification is simple:
                 #        "in production, no one would need 25% expected FPR,
                 #         which comes with beta = 2 * std on Chebyshev,
                 #         or 0% which comes after beta = 4 * std on CTL"
-                std = np.nanstd(metric_history)
                 beta_start = (
-                    std * 5 if(constraint_estimator == ChebyshevConstraint)
-                    else std
+                    metric_history_std * 5 if(constraint_estimator == ChebyshevConstraint)
+                    else metric_history_std
                 )
                 beta_end = (
-                    std * 10 if(constraint_estimator == ChebyshevConstraint)
-                    else std * 4
+                    metric_history_std * 10 if(constraint_estimator == ChebyshevConstraint)
+                    else metric_history_std * 4
                 )
                 
-                for beta in np.linspace(beta_start, beta_end, (10 if std != 0.0 else 1)):
+                beta_increment_n = 10 if metric_history_std != 0.0 else 1
+                for beta in np.linspace(beta_start, beta_end, beta_increment_n):
                     q = constraint_estimator(
                         metric,
                         # differencing_lag=lag,
@@ -260,72 +290,114 @@ class AVH:
                     ).fit(
                         metric_history,
                         beta=beta,
-                        # hotload_history=True,
+                        hotload_history=True,
                         # preprocessed_metric_history=preprocessed_metric_history,
                     )
                     Q.append(q)
         return Q
 
-    # @utils.timeit_decorator
-    def _generate_conjuctive_dq_program(
-        self, Q: List[Constraint], DC: List[Tuple[str, pd.Series]], fpr_target: float
-    ):
-        # precalculating recall for each constraint
-        start = time.time()
-        individual_recalls = [
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _precalculate_constraint_recalls(
+        self, Q: List[Constraint], DC: List[Tuple[str, pd.Series]]
+    ) -> List[Set[str]]:
+        return [
             {issue for issue, data in DC if not constraint.predict(data)}
             for constraint in Q
         ]
-        end = time.time()
-        print(f"recall calculations took: {end - start}")
 
-        # finding the best singleton Q
-        start = time.time()
-        singleton_idx = np.argmax(
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _precalculate_constraint_recalls_fast(
+        self, Q: List[Constraint], DC: List[Tuple[str, pd.Series]]
+    ) -> List[Set[str]]:
+        """
+        Serves the exact same purpose as _precalculate_constraint_recalls
+            but tries to optimise the calculations by precalculating the metric values
+            for common constraint predictions.
+
+        This optimisation implementation is highly coupled with current Q space generation,
+            since it expects common-metric constraints to be clustered.
+        """
+        individual_recalls = [set({}) for constraint in Q]
+
+        for issue, data in DC:
+            cached_metric = Q[0].metric
+            precalculated_metric = cached_metric.calculate(data)
+            for idx, constraint in enumerate(Q):
+                if not issubclass(constraint.metric, cached_metric):
+                    cached_metric = constraint.metric
+                    precalculated_metric = cached_metric.calculate(data)
+                if not constraint._predict(precalculated_metric):
+                    individual_recalls[idx].add(issue)
+
+        return individual_recalls
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _find_optimal_singleton_conjuctive_dq_program(
+        self, Q: List[Constraint], constraint_recalls: List[Set[str]], fpr_target: float
+    ) -> ConjuctivDQProgram:
+        best_singleton_constraint_idx = np.argmax(
             [
                 len(recall) if Q[idx].expected_fpr_ < fpr_target else 0
-                for idx, recall in enumerate(individual_recalls)
+                for idx, recall in enumerate(constraint_recalls)
             ]
         )
-        PS_singleton = ConjuctivDQProgram(
-            constraints=[Q[singleton_idx]],
-            recall=individual_recalls[singleton_idx],
-            contributions=[individual_recalls[singleton_idx]],
-        )
-        end = time.time()
-        print(f"Singleton finding took: {end - start}")
 
-        # finding the best set of Q based on their recall contributions
-        start = time.time()
+        return ConjuctivDQProgram(
+            constraints=[Q[best_singleton_constraint_idx]],
+            recall=constraint_recalls[best_singleton_constraint_idx],
+            contributions=[constraint_recalls[best_singleton_constraint_idx]],
+        )
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _find_optimal_conjunctive_dq_program(
+        self, Q: List[Constraint], constraint_recalls: List[Set[str]], fpr_target: float
+    ) -> ConjuctivDQProgram:
         current_fpr = 0.0
-        Q_indexes = list(range(len(Q)))
-        PS = ConjuctivDQProgram()
-        while current_fpr < fpr_target and Q_indexes:
+        q_indexes = list(range(len(Q)))
+        ps = ConjuctivDQProgram()
+        while current_fpr < fpr_target and len(q_indexes) != 0:
             recall_increments = [
-                individual_recalls[idx].difference(PS.recall) for idx in Q_indexes
+                constraint_recalls[idx].difference(ps.recall) for idx in q_indexes
             ]
 
+            # stop if there are no more recall improvements possible
             if len(max(recall_increments)) == 0:
                 break
 
             best_idx = np.argmax(
                 [
-                    len(recall) / (Q[idx].expected_fpr_ + 1)
-                    for idx, recall in zip(Q_indexes, recall_increments)
+                    len(recall_set) / (Q[idx].expected_fpr_ + 1)    # +1 is to avoid division by 0
+                    for idx, recall_set in zip(q_indexes, recall_increments)
                 ]
             )
 
-            best_constraint = Q[Q_indexes[best_idx]]
+            best_constraint = Q[q_indexes[best_idx]]
             if best_constraint.expected_fpr_ + current_fpr <= fpr_target:
                 current_fpr += best_constraint.expected_fpr_
-                PS.constraints.append(best_constraint)
-                PS.recall.update(recall_increments[best_idx])
-                PS.contributions.append(recall_increments[best_idx])
+                ps.constraints.append(best_constraint)
+                ps.recall.update(recall_increments[best_idx])
+                ps.contributions.append(recall_increments[best_idx])
 
-            Q_indexes.pop(best_idx)
-        end = time.time()
-        print(f"Main loop took: {end - start}")
-        return PS if len(PS.recall) > len(PS_singleton.recall) else PS_singleton
+            q_indexes.pop(best_idx)
+
+        return ps
+
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _generate_conjuctive_dq_program(
+        self, Q: List[Constraint], DC: List[Tuple[str, pd.Series]], fpr_target: float
+    ):
+        individual_recalls = self._precalculate_constraint_recalls_fast(Q, DC)
+
+        ps_singleton = self._find_optimal_singleton_conjuctive_dq_program(
+            Q, individual_recalls, fpr_target
+        )
+
+        ps = self._find_optimal_conjunctive_dq_program(
+            Q, individual_recalls, fpr_target
+        )
+
+        return ps if len(ps.recall) > len(ps_singleton.recall) else ps_singleton
 
     # @utils.timeit_decorator
     def _time_series_difference(
@@ -367,17 +439,23 @@ class AVH:
 
         return False, 0, identity
 
-    def _get_default_issue_transformer(self) -> DQIssueDatasetTransformer:
+    def _get_default_issue_transformer(self) -> DQIssueDatasetGenerator:
         """
         Constructs a DQIssueDatasetTransformer instance
             with DQ issues and parameter space described in the paper
         """
 
-        return DQIssueDatasetTransformer(
-            (SchemaChange, {"p": [0.1, 0.5, 1.0]}),
-            (UnitChange, {"m": [10, 100, 1000]}),
-            (CasingChange, {"p": [0.01, 0.1, 1.0]}),
-            (IncreasedNulls, {"p": [0.1, 0.5, 1.0]}),
-            (VolumeChange, {"f": [0.1, 0.5, 2.0, 10.0]}),
-            (DistributionChange, {"p": [0.1, 0.5], "take_last": [True, False]}),
+        return DQIssueDatasetGenerator(
+            issues=[
+                (SchemaChange, {"p": [0.1, 0.5, 1.0]}),
+                (UnitChange, {"p": [0.1, 1.0], "m": [10, 100, 1000]}),
+                (IncreasedNulls, {"p": [0.1, 0.5, 1.0]}),
+                (VolumeChangeUpsample, {"f": [2, 10]}),
+                (VolumeChangeDownsample, {"f": [0.5, 0.1]}),
+                (DistributionChange, {"p": [0.1, 0.5], "take_last": [True, False]}),
+                (NumericPerturbation, {"p": [0.1, 0.5, 1.0]}),
+                # (CasingChange, {"p": [0.01, 0.1, 1.0]}),
+            ],
+            random_state=self.random_state,
+            verbose = self._verbose
         )
