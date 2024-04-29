@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple, List, Union, Any, Optional, Callable, Dict, Set
 from collections.abc import Iterable
 from numbers import Number
@@ -5,19 +6,22 @@ import time
 
 import numpy as np
 
-def timeit_decorator(func):
-    """
-    Meassures elapsed time of the function
-    """
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        print(f"{func.__name__} took {elapsed_time} seconds to execute.")
-        return result
+def debug_timeit(local_logger_name=None):
+    def decorator(function):
+        def wrapper(*args, **kwargs):
+            local_logger = logging.getLogger(local_logger_name)
 
-    return wrapper
+            start_time = time.time()
+            result = function(*args, **kwargs)
+            end_time = time.time()
+            elapsed_time_ms = (end_time - start_time) * 1000
+
+            local_logger.debug(
+                f"{function.__module__}.{function.__name__} Took {elapsed_time_ms:.4f} ms to execute."
+            )
+            return result
+        return wrapper
+    return decorator
 
 def diff(data: Iterable, period: int) -> np.array:
     """
