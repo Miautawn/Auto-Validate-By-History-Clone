@@ -28,12 +28,8 @@ class DataColumn(ABC):
         """
         If subclassed, the child should call the parent constructor
         """
-        self._name = name
-        self._random_state = random_state
-
-    @property
-    def name(self) -> str:
-        return self._name
+        self.name = name
+        self.random_state = random_state
 
     @property
     @abstractmethod

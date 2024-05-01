@@ -13,6 +13,8 @@ from sklearn.utils.validation import check_is_fitted
 from avh.aliases import Seed, FloatRange, IntRange
 from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
 
+pd.options.mode.copy_on_write = True
+
     
 class SchemaChange(IssueTransfomer):
     def __init__(self, p: FloatRange = 0.5, random_state: Seed = None, randomize: bool = True):
@@ -147,27 +149,120 @@ class VolumeChangeDownsample(IssueTransfomer):
 
 class DistributionChange(IssueTransfomer):
     # Doesn't change the row count
-    def __init__(self, p: FloatRange = 0.1, take_last: bool = True):
+    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None,):
         self.p = p
         self.take_last = take_last
+        self.random_state = random_state
 
     def _get_prob(self) -> float:
         if isinstance(self.p, Iterable):
             rng = np.random.default_rng(self.random_state)
             return rng.uniform(self.p[0], self.p[1])
         return self.p
+    
+    def _process_column(self, column: pd.Series, p: float, take_last: bool):
+        not_na_mask = column.notna()
+
+        new_values = column.dropna().sort_values()
+        new_sample_size = max(int(len(new_values) * p), 1)
+
+        sample_values = (
+            new_values.tail(new_sample_size)
+            if take_last
+            else new_values.head(new_sample_size)
+        )
+
+        repeated_values = np.resize(sample_values, not_na_mask.sum())
+
+        column.iloc[not_na_mask] = repeated_values
+        return column
+
+    def _transform(self, df: pd.DataFrame) -> pd.Series:
+        new_df = df.copy()
+
+        p = self._get_prob()
+        return new_df.apply(lambda col: self._process_column(col, p, self.take_last))
+    
+from joblib import Parallel, delayed
+class DistributionChangeV2(IssueTransfomer):
+    # Doesn't change the row count
+    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None,):
+        self.p = p
+        self.take_last = take_last
+        self.random_state = random_state
+
+    def _get_prob(self) -> float:
+        if isinstance(self.p, Iterable):
+            rng = np.random.default_rng(self.random_state)
+            return rng.uniform(self.p[0], self.p[1])
+        return self.p
+    
+    def _process_column(self, column: pd.Series, p: float, take_last: bool):
+        not_na_mask = column.notna()
+
+        new_values = column.dropna().sort_values()
+        new_sample_size = max(int(len(new_values) * p), 1)
+
+        sample_values = (
+            new_values.tail(new_sample_size)
+            if take_last
+            else new_values.head(new_sample_size)
+        )
+
+        repeated_values = np.resize(sample_values, not_na_mask.sum())
+
+        column.iloc[not_na_mask] = repeated_values
+        return column
+
+    def _transform(self, df: pd.DataFrame) -> pd.Series:
+        # new_df = df.copy()
+
+        p = self._get_prob()
+        n_jobs = -1  # Using -1 will use all available cores
+        results = Parallel(n_jobs=n_jobs)(delayed(self._process_column)(df[col], p, self.take_last) for col in df.columns)
+
+        return pd.concat(results, axis=1)
+    
+
+import multiprocessing as mp
+from concurrent.futures import ThreadPoolExecutor
+class DistributionChangeV3(IssueTransfomer):
+    # Doesn't change the row count
+    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None,):
+        self.p = p
+        self.take_last = take_last
+        self.random_state = random_state
+
+    def _get_prob(self) -> float:
+        if isinstance(self.p, Iterable):
+            rng = np.random.default_rng(self.random_state)
+            return rng.uniform(self.p[0], self.p[1])
+        return self.p
+    
+    def _process_column(self, args):
+        column, p, take_last = args
+        not_na_mask = column.notna()
+
+        new_values = column.dropna().sort_values()
+        new_sample_size = max(int(len(new_values) * p), 1)
+
+        sample_values = (
+            new_values.tail(new_sample_size)
+            if take_last
+            else new_values.head(new_sample_size)
+        )
+
+        repeated_values = np.resize(sample_values, not_na_mask.sum())
+
+        column.loc[not_na_mask] = repeated_values
+        return column
 
     def _transform(self, df: pd.DataFrame) -> pd.Series:
 
-        n = df.shape[0]
-        sample_n = max(int(n * self._get_prob()), 1)
-        sample_tile_count = math.ceil(n / sample_n)
+        p = self._get_prob()
+        args = ((df[col], p, self.take_last) for col in df.columns)
 
-        # sort columns
-        new_df = pd.DataFrame({col: df[col].sort_values().values for col in df})
-
-        sample_idx = (
-            new_df.index[-sample_n:] if self.take_last else new_df.index[:sample_n]
-        )
-        sample_idx = np.tile(sample_idx, sample_tile_count)[:n]
-        return new_df.loc[sample_idx]
+        with ThreadPoolExecutor(max_workers=None) as executor:  # `None` will use as many workers as there are CPUs
+            results = executor.map(self._process_column, args)
+    
+        return pd.concat(list(results), axis=1)

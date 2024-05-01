@@ -24,7 +24,7 @@ class ConstantConstraint(Constraint):
         self.u_lower_ = u_lower
         self.expected_fpr_ = expected_fpr
 
-    def _fit(self, *args, **kwargs):
+    def _fit(self, metric_history: List[float], **kwargs):
         return self
 
 
@@ -33,9 +33,10 @@ class ChebyshevConstraint(Constraint):
     Chebyshev!
     """
 
-    def _fit(self, metric_history: List[float], beta: float, strategy: str = "raw"):
+    def _fit(self, metric_history: List[float], raw_history: List[pd.Series], beta: float, strategy: str = "raw", **kwargs):
         assert strategy in ["raw", "std"], "Strategy can only be 'raw' or 'std'"
-        
+        self.last_reference_sample_ = raw_history[-1]
+    
         mean = np.nanmean(metric_history)
         var = np.nanvar(metric_history)
 
@@ -49,6 +50,16 @@ class ChebyshevConstraint(Constraint):
         else:
             self.expected_fpr_ = var / beta**2
 
+    def predict(self, column: pd.Series, **kwargs) -> bool:
+        check_is_fitted(self)
+
+        if issubclass(self.metric, metrics.SingleDistributionMetric):
+            m = self.metric.calculate(column)
+        else:
+            m = self.metric.calculate(column, self.last_reference_sample_)
+        
+        return self._predict(m, **kwargs)
+
 class CantelliConstraint(Constraint):
     """
     Cantelli!
@@ -61,30 +72,10 @@ class CantelliConstraint(Constraint):
         metrics.KlDivergence,
         metrics.JsDivergence
     )
-
-    def fit(
-        self,
-        history: List[pd.Series],
-        y=None,
-        hotload_history: Optional[List[float]] = None,
-        # preprocessed_metric_history: np.array = None,
-        **kwargs,
-    ) -> None:
-        assert self.is_metric_compatable(self.metric), (
-            f"The {self.metric.__name__} is not compatible with "
-            f"{self.__class__.__name__}"
-        )
-
-        # saving the last sample as reference for metric calculation
-        #   during inference
-        self.last_reference_sample_ = history[-1]
-        self.metric_history_ = hotload_history if hotload_history is not None else self.metric.calculate(history)
-        self._fit(self.metric_history_, **kwargs)
-
-        return self
     
-    def _fit(self, metric_history: List[float], beta: float, strategy: str = "raw"):
+    def _fit(self, metric_history: List[float], raw_history: List[pd.Series], beta: float, strategy: str = "raw", **kwargs):
         assert strategy in ["raw", "std"], "Strategy can only be 'raw' or 'std'"
+        self.last_reference_sample_ = raw_history[-1]
 
         mean = np.nanmean(metric_history)
         var = np.nanvar(metric_history)
@@ -105,8 +96,6 @@ class CantelliConstraint(Constraint):
         m = self.metric.calculate(column, self.last_reference_sample_)
         prediction = self._predict(m, **kwargs)
 
-        print(m)
-
         return prediction
 
 
@@ -123,7 +112,7 @@ class CLTConstraint(Constraint):
     def _bell_function(sefl, x):
         return math.pow(math.e, -(x**2))
 
-    def _fit(self, metric_history: List[float], beta: float, strategy: str = "raw"):
+    def _fit(self, metric_history: List[float], beta: float, strategy: str = "raw", **kwargs):
         assert strategy in ["raw", "std"], "Strategy can only be 'raw' or 'std'"
 
         mean = np.nanmean(metric_history)

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Union, Any
 import time
-from scipy.stats import wasserstein_distance, 
+from scipy.stats import wasserstein_distance
 
 import pandas as pd
 import numpy as np

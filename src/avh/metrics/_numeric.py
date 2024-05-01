@@ -60,6 +60,9 @@ class Range(NumericMetricMixin, SingleDistributionMetric):
 class EMD(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if self._is_empty(new_sample, old_sample):
+            return np.inf
+
         # Have to drop na, since if there is at least 1 null value,
         #   the scipy.wasserstein_distance() will return null
         return wasserstein_distance(new_sample.dropna(), old_sample.dropna())
@@ -67,6 +70,9 @@ class EMD(NumericMetricMixin, TwoDistributionMetric):
 class KsDist(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if self._is_empty(new_sample, old_sample):
+            return np.inf
+
         _, ks_p_val = ks_2samp(new_sample, old_sample, nan_policy="omit")
         return 1 - ks_p_val
     
@@ -77,6 +83,11 @@ class CohenD(NumericMetricMixin, TwoDistributionMetric):
         We use null-ignoring operations
         """
         n_new, n_old = new_sample.count(), old_sample.count()
+
+        # Return np.inf if there isn't enough proper data for calculations
+        if self._is_empty(new_sample, old_sample) or n_new + n_old <= 2:
+            return np.inf
+
         degrees_of_freedom = n_new + n_old - 2
 
         mu_new = np.nanmean(new_sample)

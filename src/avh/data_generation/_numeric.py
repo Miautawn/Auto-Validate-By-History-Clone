@@ -30,7 +30,7 @@ class UniformNumericColumn(NumericColumn):
         self._upper_bound = upper_bound
 
     def _generate(self, n: int) -> np.array:
-        rng = np.random.default_rng(self._random_state)
+        rng = np.random.default_rng(self.random_state)
         return rng.uniform(self._lower_bound, self._upper_bound, n)
 
     def _update_parameters(self, n: int, i: int):
@@ -62,7 +62,7 @@ class NormalNumericColumn(NumericColumn):
         self._std = std
 
     def _generate(self, n: int) -> np.array:
-        rng = np.random.default_rng(self._random_state)
+        rng = np.random.default_rng(self.random_state)
         return rng.normal(self._mean, self._std, n)
 
     def _update_parameters(self, n: int, i: int):
@@ -102,7 +102,7 @@ class BetaNumericColumn(NumericColumn):
         self._beta = beta
 
     def _generate(self, n: int) -> np.array:
-        rng = np.random.default_rng(self._random_state)
+        rng = np.random.default_rng(self.random_state)
         return rng.beta(self._alfa, self._beta, n)
 
     def _update_parameters(self, n: int, i: int):

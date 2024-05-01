@@ -12,7 +12,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from avh.aliases import Seed
 from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
-from avh.data_issues._issues import SchemaChange, IncreasedNulls, VolumeChangeUpsample, VolumeChangeDownsample, DistributionChange
+from avh.data_issues._issues import SchemaChange, IncreasedNulls, VolumeChangeUpsample, VolumeChangeDownsample, DistributionChange, DistributionChangeV2, DistributionChangeV3
 from avh.data_issues._numeric import UnitChange, NumericPerturbation
 from avh.data_issues._categorical import CasingChange
 from avh.data_issues._dataset import DQIssueDatasetGenerator
@@ -30,8 +30,10 @@ Note: not all issue transformers are identical in their functionality to the ori
             This way we try to isolate the effect of null increase, rather than a combination of
             null and row count increase.
         * DistributionChange - In the author's code, only the last/first p% of rows are taken
-            to simulate the distribution shift. In our implementation we tile 
-            the last/first p% of values across all rows.
+            to simulate the distribution shift.
+            In our implementation we tile the last/first p% of values across all rows.
+            Additionally, we drop null values before sorting as to avoid taking all-null slice
+                and preserve them from the original df after the operation.
             This way we try to isolate the effect of distribution shift.
 """
 
@@ -42,6 +44,8 @@ __all__ = [
     "VolumeChangeUpsample",
     "VolumeChangeDownsample",
     "DistributionChange",
+    "DistributionChangeV2",
+    "DistributionChangeV3",
     "NumericIssueTransformer",
     "UnitChange",
     "NumericPerturbation",

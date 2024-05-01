@@ -81,4 +81,10 @@ class TwoDistributionMetric(Metric):
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
         ...
 
+    @classmethod
+    def _is_empty(self, data: pd.Series, reference_data: pd.Series) -> bool:
+        if data.count() == 0 or reference_data.count() == 0:
+            return True
+        return False
+
 

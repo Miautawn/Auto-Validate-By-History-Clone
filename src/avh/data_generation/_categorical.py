@@ -61,7 +61,7 @@ class RandomCategoricalColumn(CategoricalColumn):
         self._values = values
 
     def _generate(self, n: int) -> np.array:
-        rng = np.random.default_rng(self._random_state)
+        rng = np.random.default_rng(self.random_state)
         if self._values:
             return rng.choice(self._values, n, replace=True)
         else:

@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Tuple, Callable, Optional, Set
+from typing import List, Dict, Tuple, Callable, Optional, Set, Union
 import multiprocessing as mp
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -9,22 +9,25 @@ import numpy as np
 from tqdm import tqdm
 
 import avh.utility_functions as utils
-from avh.metrics import Metric
-from avh.constraints import (
-    Constraint,
-    ConjuctivDQProgram,
-    ChebyshevConstraint,
-    CLTConstraint
-)
-from avh.data_quality_issues import (
-    DQIssueDatasetTransformer,
+import avh.metrics as metrics
+import avh.constraints as constraints
+
+from avh.data_issues import (
+    IssueTransfomer,
+    NumericIssueTransformer,
+    CategoricalIssueTransformer,
+    IncreasedNulls,
     SchemaChange,
+    DistributionChange,
     UnitChange,
     CasingChange,
-    IncreasedNulls,
-    VolumeChange,
-    DistributionChange
+    DQIssueDatasetGenerator,
+    VolumeChangeUpsample,
+    VolumeChangeDownsample,
+    NumericPerturbation,
 )
+
+from avh.aliases import Seed
 
 class AVH:
     """
@@ -33,158 +36,180 @@ class AVH:
 
     logger = logging.getLogger(f"{__name__}.AVH")
 
-    def __init__(
-        self,
-        M: List[Metric],
-        E: List[Constraint],
-        DC: Optional[DQIssueDatasetTransformer] = None,
-        columns: Optional[List[str]] = None,
-        time_differencing: bool = False,
-    ):
-        self.M = M
-        self.E = E
-        self.columns = columns
-        self.time_differencing = time_differencing
-
-        self.issue_dataset_generator = (
-            DC if DC else self._get_default_issue_transformer()
-        )
-
-    def enable_debug(self, enable: bool):
+    def _enable_debug(self, enable: bool):
         self.logger.setLevel(logging.DEBUG if enable else logging.INFO)
 
+    def _reset_verbosity_states(self):
+        self._enable_debug(False)
+
+    def __init__(
+        self,
+        M: Optional[List[metrics.Metric]] = None,
+        E: Optional[List[constraints.Constraint]] = None,
+        DC: Optional[DQIssueDatasetGenerator] = None,
+        columns: Optional[List[str]] = None,
+        time_differencing: bool = False,
+        random_state: Seed = None,
+        verbose: int = 1
+    ):
+
+        self.M = M
+        self.E = E
+        self.DC = DC
+        self.columns = columns
+        self.time_differencing = time_differencing
+        self.random_state = random_state
+
+        self.verbose = verbose
+
+        if self.M is None:
+            self.M = self.default_metrics
+
+        if self.E is None:
+            self.E = self.default_constraint_estimators
+
+        if self.DC is None:
+            self.DC = self._get_default_issue_dataset_generator(
+                verbose=self._verbose,
+                random_state=self.random_state
+            )
+
+    @property
+    def verbose(self) -> int:
+        if self._verbose == 0:
+            return False
+        return True
+
+    @verbose.setter
+    def verbose(self, level: Union[int, bool]):
+        assert level >= 0, "Verbosity level must be a positive integer"
+
+        self._reset_verbosity_states()
+        self._verbose = level
+
+        if level >= 2:
+            self._enable_debug(True)
+
+    @property
+    def default_data_quality_issues(self) -> List[Tuple[IssueTransfomer, dict]]:
+        return [
+            (SchemaChange, {"p": [0.1, 0.5, 1.0]}),
+            (UnitChange, {"p": [0.1, 1.0], "m": [10, 100, 1000]}),
+            (IncreasedNulls, {"p": [0.1, 0.5, 1.0]}),
+            (VolumeChangeUpsample, {"f": [2, 10]}),
+            (VolumeChangeDownsample, {"f": [0.5, 0.1]}),
+            (DistributionChange, {"p": [0.1, 0.5], "take_last": [True, False]}),
+            (NumericPerturbation, {"p": [0.1, 0.5, 1.0]}),
+        ]
+    
+    @property
+    def default_metrics(self) -> List[metrics.Metric]:
+        return [
+            metrics.RowCount,
+            metrics.DistinctRatio,
+            metrics.DistinctCount,
+            metrics.CompleteRatio,
+            metrics.Min,
+            metrics.Max,
+            metrics.Mean,
+            metrics.Median,
+            metrics.Sum,
+            metrics.Range,
+            metrics.EMD,
+            metrics.JsDivergence,
+            metrics.KlDivergence,
+            metrics.KsDist,
+            metrics.CohenD,
+        ]
+    
+    @property
+    def default_constraint_estimators(self) -> List[constraints.Constraint]:
+        return [
+            constraints.CLTConstraint,
+            constraints.ChebyshevConstraint,
+            constraints.CantelliConstraint,
+        ]
+    
+    @property
+    def default_beta_ranges(self) -> Dict[constraints.Constraint, Tuple[float, float, float]]:
+        """
+        Returns default beta ranges (in terms fo standard deviations)
+            for the default constraint estimators.
+
+        The returned float tuple contains start, end and increment for the beta range.
+        All ranges are calculated for estimated FPR in [0.5, 0.0005]
+        """
+        return {
+            constraints.ChebyshevConstraint: (2.0, 50.0, 1.0),
+            constraints.CantelliConstraint: (1.0, 49.0, 1.0),
+            constraints.CLTConstraint: (1.0, 5.0, 0.5),
+        }
+    
+    @property
+    def default_production_beta_ranges(self) -> Dict[constraints.Constraint, Tuple[float, float, float]]:
+        """
+        Returns default beta ranges (in terms fo standard deviations)
+            for the default constraint estimators,
+            optimised for production use (when target FPR is small)
+
+        # TODO: improve this to work with more general cases
+        # 'intelligent' beta hyperparameter search optimisation.
+        #    The justification is simple:
+        #        "in production, no one would need 25% expected FPR,
+        #         which comes with beta = 2 * std on Chebyshev,
+        #         or 0% which comes after beta = 4 * std on CTL"
+
+        The returned float tuple contains start, end and increment for the range.
+        All ranges are calculated for estimated FPR in [0.05, 0.005]
+        """
+        return {
+            constraints.ChebyshevConstraint: (5.0, 15.0, 1.0),
+            constraints.CantelliConstraint: (5.0, 15.0, 1.0),
+            constraints.CLTConstraint: (2.0, 4.0, 0.5),
+        }
+
+    def _get_default_issue_dataset_generator(self, verbose: int = 0, random_state: Seed = 42) -> DQIssueDatasetGenerator:
+        """
+        Constructs a DQIssueDatasetTransformer instance
+            with DQ issues and parameter space described in the paper
+        """
+
+        return DQIssueDatasetGenerator(
+            issues=self.default_data_quality_issues,
+            verbose = verbose,
+            random_state=random_state
+        )
+
+    @utils.debug_timeit(f"{__name__}.AVH")
     def generate(
-        self, history: List[pd.DataFrame], fpr_target: float, multiprocess=False
-    ) -> Dict[str, ConjuctivDQProgram]:
+        self, history: List[pd.DataFrame], fpr_target: float,
+        optimise_search_space: Union[bool, str] = "auto"
+    ) -> Dict[str, constraints.ConjuctivDQProgram]:
+        assert optimise_search_space in [True, False, "auto"], "`optimise_search_space` can only be one of [True, False, 'auto']"
+        if optimise_search_space == "auto":
+            optimise_search_space = True if fpr_target <= 0.05 else False
+
         PS = {}
 
-        DC = self.issue_dataset_generator.fit_transform(history[-1])
+        DC = self.DC.generate(history[-1])
         columns = self.columns if self.columns else list(history[0].columns)
 
-        for column in tqdm(columns, "Generating P(S for columns..."):
-            start = time.time()
+        for column in tqdm(columns, "Generating P(S for columns...", disable=not self.verbose):
             Q = self._generate_constraint_space(
-                [run[column] for run in history[:-1]]
+                [run[column] for run in history[:-1]],
+                optimise_search_space=optimise_search_space
             )
-            end = time.time()
-            DEBUG_MODE and print(f"Q generation took: {end-start}")
 
-            start = time.time()
             PS[column] = self._generate_conjuctive_dq_program(
                 Q, DC[column], fpr_target
             )
-            end = time.time()
-            print(f"PS generation took: {end-start}")
 
         return PS
 
-    def generate_batched(
-        self, history: List[pd.DataFrame], fpr_target: float
-    ) -> Dict[str, ConjuctivDQProgram]:
-        PS = {}
-
-        DC = self.issue_dataset_generator.fit_transform(history[-1])
-        columns = self.columns if self.columns else list(history[0].columns)
-
-        Q = {}
-        start = time.time()
-        for column in tqdm(columns, "Generating Q for columns..."):
-            q = self._generate_constraint_space([run[column] for run in history[:-1]])
-            Q[column] = q
-        end = time.time()
-        print(f"Q generation took: {end-start}")
-
-        start = time.time()
-        for column in tqdm(columns, "Generating P(S) for columns..."):
-            PS[column] = self._generate_conjuctive_dq_program(
-                Q[column], DC[column], fpr_target
-            )
-        end = time.time()
-        print(f"PS generation took: {end-start}")
-
-        return PS
-
-    def generate_batched_threaded(
-        self, history: List[pd.DataFrame], fpr_target: float
-    ) -> Dict[str, ConjuctivDQProgram]:
-        PS = {}
-
-        DC = self.issue_dataset_generator.fit_transform(history[-1])
-        columns = self.columns if self.columns else list(history[0].columns)
-
-        Q = {}
-        start = time.time()
-        with ThreadPoolExecutor() as executor:
-            futures = [
-                executor.submit(
-                    self._generate_constraint_space,
-                    [run[column] for run in history[:-1]]
-                )
-                for column in columns
-            ]
-            
-            for result in tqdm(as_completed(futures), "Generating Q for columns...", total=len(columns)):
-                _ = result.result()
-                
-        end = time.time()
-        print(f"Q generation took: {end-start}")
-
-        # start = time.time()
-        # for column in tqdm(columns, "Generating P(S) for columns..."):
-        #     PS[column] = self._generate_conjuctive_dq_program(
-        #         Q[column], DC[column], fpr_target
-        #     )
-        # end = time.time()
-        # print(f"PS generation took: {end-start}")
-
-        return PS
-
-    def generate_batched_parallel(
-        self, history: List[pd.DataFrame], fpr_target: float
-    ) -> Dict[str, ConjuctivDQProgram]:
-        PS = {}
-
-        DC = self.issue_dataset_generator.fit_transform(history[-1])
-        columns = self.columns if self.columns else list(history[0].columns)
-
-        Q = {}
-        start = time.time()
-        arguments = ((column, [run[column] for run in history[:-1]]) for column in columns)
-        with mp.Pool() as executor:
-            results = executor.imap_unordered(
-                self._generate_constraint_space_parallel_args, arguments, chunksize=10
-            )
-            for column, q in tqdm(results, "Generating Q for columns...", total=len(columns)):
-                Q[column] = q
-                
-        end = time.time()
-        print(f"Q generation took: {end-start}")
-
-        start = time.time()
-        arguments = ((column, DC[column], Q[column], fpr_target) for column in columns)
-        with mp.Pool() as executor:
-            results = executor.imap_unordered(
-                self._generate_conjuctive_dq_program_parallel_args, arguments, chunksize=10
-            )
-            for column, ps in tqdm(results, "Generating P(S) for columns...", total=len(columns)):
-                PS[column] = ps
-
-        end = time.time()
-        print(f"PS generation took: {end-start}")
-
-        return PS
-
-    def _generate_constraint_space_parallel_args(self, args):
-        column, history = args
-        return column, self._generate_constraint_space(history)
-
-    def _generate_conjuctive_dq_program_parallel_args(self, args):
-        column, DC, Q, fpr_target = args
-        return column, self._generate_conjuctive_dq_program(Q, DC, fpr_target)
 
     def generate_parallel(
         self, history: List[pd.DataFrame], fpr_target: float, multiprocess=False
-    ) -> Dict[str, ConjuctivDQProgram]:
+    ) -> Dict[str, constraints.ConjuctivDQProgram]:
         PS = {}
 
         DC = self.issue_dataset_generator.fit_transform(history[-1])
@@ -209,175 +234,158 @@ class AVH:
         column, history, DC, fpr_target = args
         Q = self._generate_constraint_space(history)
         return column, self._generate_conjuctive_dq_program(Q, DC, fpr_target)
+    
+    def _get_beta_range(self, constraint_estimator: constraints.Constraint, optimise_search_space: bool) -> np.ndarray:
 
-    # @utils.timeit_decorator
-    def _generate_constraint_space(self, history: List[pd.Series]) -> List[Constraint]:
+        default_beta_ranges = (1.0, 50.0, 1.0)
+        if optimise_search_space:
+            beta_start, beta_end, beta_increment = self.default_production_beta_ranges.get(
+                constraint_estimator, default_beta_ranges
+            )
+        else:
+            beta_start, beta_end, beta_increment = self.default_beta_ranges.get(
+                constraint_estimator, default_beta_ranges
+            )
+
+        return  np.arange(beta_start, beta_end, beta_increment)
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _generate_constraint_space(
+            self,
+            history: List[pd.Series],
+            optimise_search_space=False
+        ) -> List[constraints.Constraint]:
         Q = []
         for metric in self.M:
             if not metric.is_column_compatable(history[0].dtype):
                 continue
 
-            metric_history = metric.calculate(history)
-            # preprocessed_metric_history = None
-
-            # TODO: put this into another function
-            # lag, preprocessing_func = 0, utils.identity
-            # if self.time_differencing:
-            #     is_stationary, lag, preprocessing_func = self._time_series_difference(
-            #         metric_history
-            #     )
-            #     if not is_stationary:
-            #         continue
-
-            #     preprocessed_metric_history = diff(
-            #         preprocessing_func(metric_history), lag
-            #     )
+            precalculated_metric_history = metric.calculate(history)
+            precalculated_std = np.nanstd(precalculated_metric_history)
 
             for constraint_estimator in self.E:
                 if not constraint_estimator.is_metric_compatable(metric):
-                    continue
+                    continue                
 
-                # 'intelligent' beta hyperparameter search optimisation.
-                #    The justification is simple:
-                #        "in production, no one would need 25% expected FPR,
-                #         which comes with beta = 2 * std on Chebyshev,
-                #         or 0% which comes after beta = 4 * std on CTL"
-                std = np.nanstd(metric_history)
-                beta_start = (
-                    std * 5 if(constraint_estimator == ChebyshevConstraint)
-                    else std
-                )
-                beta_end = (
-                    std * 10 if(constraint_estimator == ChebyshevConstraint)
-                    else std * 4
-                )
-                
-                for beta in np.linspace(beta_start, beta_end, (10 if std != 0.0 else 1)):
+                for beta in self._get_beta_range(constraint_estimator, optimise_search_space):
                     q = constraint_estimator(
                         metric,
-                        # differencing_lag=lag,
-                        # preprocessing_func=preprocessing_func,
                     ).fit(
-                        metric_history,
-                        beta=beta,
-                        # hotload_history=True,
-                        # preprocessed_metric_history=preprocessed_metric_history,
+                        history,
+                        hotload_history = precalculated_metric_history,
+                        beta=precalculated_std * beta,
+                        strategy="raw"
                     )
                     Q.append(q)
         return Q
 
-    # @utils.timeit_decorator
-    def _generate_conjuctive_dq_program(
-        self, Q: List[Constraint], DC: List[Tuple[str, pd.Series]], fpr_target: float
-    ):
-        # precalculating recall for each constraint
-        start = time.time()
-        individual_recalls = [
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _precalculate_constraint_recalls(
+        self, Q: List[constraints.Constraint], DC: List[Tuple[str, pd.Series]]
+    ) -> List[Set[str]]:
+        
+        return [
             {issue for issue, data in DC if not constraint.predict(data)}
             for constraint in Q
         ]
-        end = time.time()
-        print(f"recall calculations took: {end - start}")
+    
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _precalculate_constraint_recalls_fast(
+        self, Q: List[constraints.Constraint], DC: List[Tuple[str, pd.Series]]
+    ) -> List[Set[str]]:
+        """
+        Serves the exact same purpose as _precalculate_constraint_recalls
+            but tries to optimise the calculations by precalculating the metric values
+            for common constraint predictions.
 
-        # finding the best singleton Q
-        start = time.time()
-        singleton_idx = np.argmax(
+        This optimisation implementation is highly coupled with current Q space generation,
+            since it expects common-metric constraints to be clustered.
+        """
+        individual_recalls = [set({}) for constraint in Q]
+
+        def _cache_metric_from_constraint(constraint: constraints.Constraint, data: pd.Series):
+            cached_metric = constraint.metric
+            if issubclass(cached_metric, metrics.SingleDistributionMetric):
+                precalculated_metric = cached_metric.calculate(data)
+            else:
+                precalculated_metric = cached_metric.calculate(data, constraint.last_reference_sample_)
+
+            return cached_metric, precalculated_metric
+
+        for issue, data in DC:
+            cached_metric, precalculated_metric = _cache_metric_from_constraint(Q[0], data)
+            for idx, constraint in enumerate(Q):
+                if not issubclass(constraint.metric, cached_metric):
+                    cached_metric, precalculated_metric = _cache_metric_from_constraint(constraint, data)
+                if not constraint._predict(precalculated_metric):
+                    individual_recalls[idx].add(issue)
+
+        return individual_recalls
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _find_optimal_singleton_conjuctive_dq_program(
+        self, Q: List[constraints.Constraint], constraint_recalls: List[Set[str]], fpr_target: float
+    ) -> constraints.ConjuctivDQProgram:
+        best_singleton_constraint_idx = np.argmax(
             [
                 len(recall) if Q[idx].expected_fpr_ < fpr_target else 0
-                for idx, recall in enumerate(individual_recalls)
+                for idx, recall in enumerate(constraint_recalls)
             ]
         )
-        PS_singleton = ConjuctivDQProgram(
-            constraints=[Q[singleton_idx]],
-            recall=individual_recalls[singleton_idx],
-            contributions=[individual_recalls[singleton_idx]],
-        )
-        end = time.time()
-        print(f"Singleton finding took: {end - start}")
 
-        # finding the best set of Q based on their recall contributions
-        start = time.time()
+        return constraints.ConjuctivDQProgram(
+            constraints=[Q[best_singleton_constraint_idx]],
+            recall=constraint_recalls[best_singleton_constraint_idx],
+            contributions=[constraint_recalls[best_singleton_constraint_idx]],
+        )
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _find_optimal_conjunctive_dq_program(
+        self, Q: List[constraints.Constraint], constraint_recalls: List[Set[str]], fpr_target: float
+    ) -> constraints.ConjuctivDQProgram:
         current_fpr = 0.0
-        Q_indexes = list(range(len(Q)))
-        PS = ConjuctivDQProgram()
-        while current_fpr < fpr_target and Q_indexes:
+        q_indexes = list(range(len(Q)))
+        ps = constraints.ConjuctivDQProgram()
+        while current_fpr < fpr_target and len(q_indexes) != 0:
             recall_increments = [
-                individual_recalls[idx].difference(PS.recall) for idx in Q_indexes
+                constraint_recalls[idx].difference(ps.recall) for idx in q_indexes
             ]
 
+            # stop if there are no more recall improvements possible
             if len(max(recall_increments)) == 0:
                 break
 
             best_idx = np.argmax(
                 [
-                    len(recall) / (Q[idx].expected_fpr_ + 1)
-                    for idx, recall in zip(Q_indexes, recall_increments)
+                    len(recall_set) / (Q[idx].expected_fpr_ + 1)    # +1 is to avoid division by 0
+                    for idx, recall_set in zip(q_indexes, recall_increments)
                 ]
             )
 
-            best_constraint = Q[Q_indexes[best_idx]]
+            best_constraint = Q[q_indexes[best_idx]]
             if best_constraint.expected_fpr_ + current_fpr <= fpr_target:
                 current_fpr += best_constraint.expected_fpr_
-                PS.constraints.append(best_constraint)
-                PS.recall.update(recall_increments[best_idx])
-                PS.contributions.append(recall_increments[best_idx])
+                ps.constraints.append(best_constraint)
+                ps.recall.update(recall_increments[best_idx])
+                ps.contributions.append(recall_increments[best_idx])
 
-            Q_indexes.pop(best_idx)
-        end = time.time()
-        print(f"Main loop took: {end - start}")
-        return PS if len(PS.recall) > len(PS_singleton.recall) else PS_singleton
+            q_indexes.pop(best_idx)
 
-    # @utils.timeit_decorator
-    def _time_series_difference(
-        self, metric_history: List[float]
-    ) -> Tuple[bool, int, Callable]:
-        """
-        Performs time series differencing search to find stationary form
-            of the provided metric history distribution.
+        return ps
 
-        Returns:
-        bool - whether the stationarity was achieved
-        int - found lag window that achieved stationarity
-        Callable - metric preprocessing function
-        """
 
-        def is_stationary(metric_history):
-            return adfuller(metric_history)[1] <= 0.05
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _generate_conjuctive_dq_program(
+        self, Q: List[constraints.Constraint], DC: List[Tuple[str, pd.Series]], fpr_target: float
+    ):
+        individual_recalls = self._precalculate_constraint_recalls_fast(Q, DC)
 
-        def search_for_stationarity(metric_history):
-            for l in range(1, 8):
-                metric_history_with_lag = metric_history.diff(l)[l:]
-                if is_stationary(metric_history_with_lag):
-                    return True, l
-            return False, 0
-
-        if is_stationary(metric_history):
-            return True, 0, utils.identity
-
-        # Perform lag transformation
-        status, window = search_for_stationarity(metric_history)
-        if status:
-            return status, window, utils.identity
-
-        # Perform lag transformation with log transformation
-        log_metric_history = pd.Series(safe_log(metric_history))
-        status, window = search_for_stationarity(log_metric_history)
-        if status:
-            return status, window, utils.safe_log
-
-        return False, 0, identity
-
-    def _get_default_issue_transformer(self) -> DQIssueDatasetTransformer:
-        """
-        Constructs a DQIssueDatasetTransformer instance
-            with DQ issues and parameter space described in the paper
-        """
-
-        return DQIssueDatasetTransformer(
-            (SchemaChange, {"p": [0.1, 0.5, 1.0]}),
-            (UnitChange, {"m": [10, 100, 1000]}),
-            (CasingChange, {"p": [0.01, 0.1, 1.0]}),
-            (IncreasedNulls, {"p": [0.1, 0.5, 1.0]}),
-            (VolumeChange, {"f": [0.1, 0.5, 2.0, 10.0]}),
-            (DistributionChange, {"p": [0.1, 0.5], "take_last": [True, False]}),
+        ps_singleton = self._find_optimal_singleton_conjuctive_dq_program(
+            Q, individual_recalls, fpr_target
         )
+
+        ps = self._find_optimal_conjunctive_dq_program(
+            Q, individual_recalls, fpr_target
+        )
+
+        return ps if len(ps.recall) > len(ps_singleton.recall) else ps_singleton
