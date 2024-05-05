@@ -1,5 +1,5 @@
 import math
-from typing import Tuple, List, Union, Any, Dict, Iterable
+from typing import Tuple, List, Union, Any, Dict, Iterable, Optional
 import multiprocessing as mp
 from itertools import product
 import pickle
@@ -19,11 +19,12 @@ class DQIssueDatasetGenerator():
         and cartesian product of their parameters
     """
 
-    def __init__(self, issues: List[Tuple[IssueTransfomer, dict]], random_state: Seed = None, verbose: int = 1):
+    def __init__(self, issues: List[Tuple[IssueTransfomer, dict]], random_state: Seed = None, verbose: int = 1, n_jobs: Optional[int] = None):
         self._random_state = random_state
         self._numeric_issues = []
         self._categorical_issues = []
         self._shared_issues = []
+        self._n_jobs = n_jobs
         self.verbose = verbose
 
         for issue in issues:
@@ -57,13 +58,12 @@ class DQIssueDatasetGenerator():
             target_df = df[dtype_columns]
             for transformer, parameters in dtype_issues:
                 fitted_transformer = transformer().fit(target_df)
-                if "random_state" in fitted_transformer.get_params():
-                        fitted_transformer.set_params(random_state=self._random_state)
+                fitted_transformer = self._set_optional_transformer_parameters(fitted_transformer)
                 
                 for param_comb in self._get_parameter_combination(parameters):
                     # Note: generaly you should fit the estimator after setting parameters,
                     #   however, we know that in our case it's safe to do so and allows
-                    #   for some minimal optimisatinon by not needing to fit after every param change
+                    #   for a small optimisatinon by not needing to fit after every param change
                     fitted_transformer.set_params(**param_comb)
                     fitted_transformer_signature = repr(fitted_transformer)
                     modified_df = fitted_transformer.transform(target_df)
@@ -76,38 +76,6 @@ class DQIssueDatasetGenerator():
 
         pbar.close()
         return dataset
-
-    # def fit(self, df: pd.DataFrame, y=None, **kwargs):
-    #     self.columns_ = list(df.columns)
-    #     self.numeric_columns_ = list(df.select_dtypes(include="number").columns)
-    #     self.categorical_columns_ = list(set(self.columns_).difference(set(self.numeric_columns_)))
-    #     return self
-
-    # def transform(self, df: pd.DataFrame, y=None):
-    #     dataset = {column: [] for column in self.columns_}
-
-    #     pbar = tqdm(desc="creating D(C)...")
-    #     for dtype_issues, dtype_columns in self._iterate_by_dtype():
-    #         if not dtype_columns:
-    #             continue
-                
-    #         target_df = df[dtype_columns]
-    #         for transformer, parameters in dtype_issues:
-    #             fitted_transformer = transformer().fit(target_df)
-                
-    #             for param_comb in self._get_parameter_combination(parameters):
-    #                 fitted_transformer.set_params(**param_comb)
-    #                 fitted_transformer_signature = repr(fitted_transformer)
-    #                 modified_df = fitted_transformer.transform(target_df)
-                    
-    #                 for column in dtype_columns:
-    #                     dataset[column].append(
-    #                         (fitted_transformer_signature, modified_df[column])
-    #                     )
-    #                 pbar.update(1)
-
-    #     pbar.close()
-    #     return dataset
 
     def _get_parameter_combination(self, params):
         # Put variable parameter values into iterables,
@@ -133,3 +101,11 @@ class DQIssueDatasetGenerator():
 
     def _get_categorical_columns(self, df: pd.DataFrame) -> List[str]:
         return list(df.select_dtypes(exclude="number").columns)
+    
+    def _set_optional_transformer_parameters(self, transformer: IssueTransfomer) -> IssueTransfomer:
+        transformer_params = transformer.get_params()
+        if "random_state" in transformer_params:
+            transformer.set_params(random_state=self._random_state)
+        if "n_jobs" in transformer_params:
+            transformer.set_params(n_jobs=self._n_jobs)
+        return transformer
