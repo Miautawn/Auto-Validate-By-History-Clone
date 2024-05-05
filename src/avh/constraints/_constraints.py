@@ -1,12 +1,11 @@
 import math
-from typing import List, Union, Callable, Optional, Set
+from typing import List
 
 import pandas as pd
 import numpy as np
-from sklearn.base import BaseEstimator, check_is_fitted
+from sklearn.base import check_is_fitted
 from scipy import integrate
 
-import avh.utility_functions as utils
 import avh.metrics as metrics
 from avh.constraints._base import Constraint
 

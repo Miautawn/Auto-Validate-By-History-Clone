@@ -1,19 +1,11 @@
-import math
-from typing import Tuple, List, Union, Any, Dict, Iterable, Optional
-import multiprocessing as mp
-from itertools import product
-import pickle
+from typing import Iterable, Optional
 
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.utils.validation import check_is_fitted
-from concurrent.futures import ThreadPoolExecutor
 from joblib import Parallel, delayed
 
 from avh.aliases import Seed, FloatRange, IntRange
-from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
+from avh.data_issues._base import IssueTransfomer
 
 
 class SchemaChange(IssueTransfomer):

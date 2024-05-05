@@ -1,4 +1,4 @@
-from typing import List, Any, Optional, Callable, Union
+from typing import Any, Optional, Callable, Union
 from abc import ABC, abstractmethod
 
 import pandas as pd

@@ -1,11 +1,9 @@
-from typing import List, Tuple, Optional
-from abc import ABC, abstractmethod
+from typing import List, Optional
 
-import pandas as pd
 import numpy as np
 from gutenbergpy import textget
 
-from avh.data_generation._base import DataColumn, NumericColumn, CategoricalColumn
+from avh.data_generation._base import CategoricalColumn
 
 # predownloading Moby-dick text for random text generation
 raw_book = textget.get_text_by_id(2701)

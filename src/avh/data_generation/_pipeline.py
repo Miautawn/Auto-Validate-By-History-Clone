@@ -5,7 +5,7 @@ import numpy as np
 
 from avh.aliases import Seed
 from avh.data_issues import IssueTransfomer
-from avh.data_generation._base import DataColumn, NumericColumn, CategoricalColumn
+from avh.data_generation._base import DataColumn
 
 class DataGenerationPipeline:
     """

@@ -1,8 +1,5 @@
 import logging
-from typing import List, Dict, Tuple, Callable, Optional, Set, Union
-import multiprocessing as mp
-import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Dict, Tuple, Optional, Set, Union
 from joblib import Parallel, delayed
 
 import pandas as pd
@@ -15,13 +12,10 @@ import avh.constraints as constraints
 
 from avh.data_issues import (
     IssueTransfomer,
-    NumericIssueTransformer,
-    CategoricalIssueTransformer,
     IncreasedNulls,
     SchemaChange,
     DistributionChange,
     UnitChange,
-    CasingChange,
     DQIssueDatasetGenerator,
     VolumeChangeUpsample,
     VolumeChangeDownsample,
