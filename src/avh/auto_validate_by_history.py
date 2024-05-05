@@ -152,12 +152,10 @@ class AVH:
             for the default constraint estimators,
             optimised for production use (when target FPR is small)
 
-        # TODO: improve this to work with more general cases
-        # 'intelligent' beta hyperparameter search optimisation.
-        #    The justification is simple:
-        #        "in production, no one would need 25% expected FPR,
-        #         which comes with beta = 2 * std on Chebyshev,
-        #         or 0% which comes after beta = 4 * std on CTL"
+        The justification is simple:
+            "In production, no one would need 100% expected FPR,
+            which comes with beta = 1 * std on Chebyshev,
+            or ~0% which comes after beta = 4 * std on CTL"
 
         The returned float tuple contains start, end and increment for the range.
         All ranges are calculated for estimated FPR in [0.05, 0.005]
