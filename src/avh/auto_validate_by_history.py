@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple, Callable, Optional, Set, Union
 import multiprocessing as mp
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from joblib import Parallel, delayed
 
 import pandas as pd
 import numpy as np
@@ -50,7 +51,8 @@ class AVH:
         columns: Optional[List[str]] = None,
         time_differencing: bool = False,
         random_state: Seed = None,
-        verbose: int = 1
+        verbose: int = 1,
+        n_jobs: Optional[int] = None
     ):
 
         self.M = M
@@ -59,6 +61,7 @@ class AVH:
         self.columns = columns
         self.time_differencing = time_differencing
         self.random_state = random_state
+        self.n_jobs = n_jobs
 
         self.verbose = verbose
 
@@ -175,9 +178,10 @@ class AVH:
         return DQIssueDatasetGenerator(
             issues=self.default_data_quality_issues,
             verbose = verbose,
-            random_state=random_state
+            random_state=random_state,
+            n_jobs=self.n_jobs
         )
-
+    
     @utils.debug_timeit(f"{__name__}.AVH")
     def generate(
         self, history: List[pd.DataFrame], fpr_target: float,
@@ -187,15 +191,23 @@ class AVH:
         if optimise_search_space == "auto":
             optimise_search_space = True if fpr_target <= 0.05 else False
 
+        if self.n_jobs is None:
+            return self._generate_sequential(history, fpr_target, optimise_search_space)
+        else:
+            return self._generate_parallel(history, fpr_target, optimise_search_space)
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _generate_sequential(
+        self, history: List[pd.DataFrame], fpr_target: float, optimise_search_space: bool
+    ) -> Dict[str, constraints.ConjuctivDQProgram]:
         PS = {}
 
         DC = self.DC.generate(history[-1])
         columns = self.columns if self.columns else list(history[0].columns)
 
-        for column in tqdm(columns, "Generating P(S for columns...", disable=not self.verbose):
+        for column in tqdm(columns, "Generating P(S for columns..."):
             Q = self._generate_constraint_space(
-                [run[column] for run in history[:-1]],
-                optimise_search_space=optimise_search_space
+                [run[column] for run in history[:-1]], optimise_search_space
             )
 
             PS[column] = self._generate_conjuctive_dq_program(
@@ -203,35 +215,31 @@ class AVH:
             )
 
         return PS
-
-
-    def generate_parallel(
-        self, history: List[pd.DataFrame], fpr_target: float, multiprocess=False
+    
+    def _generate_parallel_worker(self, column, history, DC, fpr_target, optimise_search_space):
+        Q = self._generate_constraint_space(history, optimise_search_space)
+        return column, self._generate_conjuctive_dq_program(Q, DC, fpr_target)
+    
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _generate_parallel(
+        self, history: List[pd.DataFrame], fpr_target: float, optimise_search_space: bool
     ) -> Dict[str, constraints.ConjuctivDQProgram]:
         PS = {}
 
-        DC = self.issue_dataset_generator.fit_transform(history[-1])
+        DC = self.DC.generate(history[-1])
         columns = self.columns if self.columns else list(history[0].columns)
 
-        print("opa")
-        arguments = [
-            (column, [run[column] for run in history[:-1]], DC[column], fpr_target)
+        results = Parallel(n_jobs=self.n_jobs, return_as='generator_unordered')(
+            delayed(self._generate_parallel_worker)
+            (column, [run[column] for run in history[:-1]], DC[column], fpr_target, optimise_search_space)
             for column in columns
-        ]
-        print("let's go!!!")
-        with mp.Pool() as executor:
-            results = executor.imap_unordered(
-                self._apply_stuff, arguments, chunksize=10
-            )
-            for column, ps in tqdm(results, "creating P(S)...", total=len(columns)):
-                PS[column] = ps
+        )
 
+        for column, ps in tqdm(results, "creating P(S) (with joblib)...", total=len(columns), disable=not self.verbose):
+            PS[column] = ps
+
+        del results
         return PS
-
-    def _apply_stuff(self, args):
-        column, history, DC, fpr_target = args
-        Q = self._generate_constraint_space(history)
-        return column, self._generate_conjuctive_dq_program(Q, DC, fpr_target)
     
     def _get_beta_range(self, constraint_estimator: constraints.Constraint, optimise_search_space: bool) -> np.ndarray:
 
