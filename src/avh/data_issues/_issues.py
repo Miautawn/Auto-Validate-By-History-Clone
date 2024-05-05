@@ -1,5 +1,5 @@
 import math
-from typing import Tuple, List, Union, Any, Dict, Iterable
+from typing import Tuple, List, Union, Any, Dict, Iterable, Optional
 import multiprocessing as mp
 from itertools import product
 import pickle
@@ -9,11 +9,11 @@ import numpy as np
 from tqdm import tqdm
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
+from concurrent.futures import ThreadPoolExecutor
+from joblib import Parallel, delayed
 
 from avh.aliases import Seed, FloatRange, IntRange
 from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
-
-pd.options.mode.copy_on_write = True
 
     
 class SchemaChange(IssueTransfomer):
@@ -146,13 +146,14 @@ class VolumeChangeDownsample(IssueTransfomer):
             return df.iloc[indexes]
         else:
             return df.iloc[:sample_n]
-
+    
 class DistributionChange(IssueTransfomer):
     # Doesn't change the row count
-    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None,):
+    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None, n_jobs: Optional[int] = None):
         self.p = p
         self.take_last = take_last
         self.random_state = random_state
+        self.n_jobs = n_jobs
 
     def _get_prob(self) -> float:
         if isinstance(self.p, Iterable):
@@ -161,86 +162,6 @@ class DistributionChange(IssueTransfomer):
         return self.p
     
     def _process_column(self, column: pd.Series, p: float, take_last: bool):
-        not_na_mask = column.notna()
-
-        new_values = column.dropna().sort_values()
-        new_sample_size = max(int(len(new_values) * p), 1)
-
-        sample_values = (
-            new_values.tail(new_sample_size)
-            if take_last
-            else new_values.head(new_sample_size)
-        )
-
-        repeated_values = np.resize(sample_values, not_na_mask.sum())
-
-        column.iloc[not_na_mask] = repeated_values
-        return column
-
-    def _transform(self, df: pd.DataFrame) -> pd.Series:
-        new_df = df.copy()
-
-        p = self._get_prob()
-        return new_df.apply(lambda col: self._process_column(col, p, self.take_last))
-    
-from joblib import Parallel, delayed
-class DistributionChangeV2(IssueTransfomer):
-    # Doesn't change the row count
-    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None,):
-        self.p = p
-        self.take_last = take_last
-        self.random_state = random_state
-
-    def _get_prob(self) -> float:
-        if isinstance(self.p, Iterable):
-            rng = np.random.default_rng(self.random_state)
-            return rng.uniform(self.p[0], self.p[1])
-        return self.p
-    
-    def _process_column(self, column: pd.Series, p: float, take_last: bool):
-        not_na_mask = column.notna()
-
-        new_values = column.dropna().sort_values()
-        new_sample_size = max(int(len(new_values) * p), 1)
-
-        sample_values = (
-            new_values.tail(new_sample_size)
-            if take_last
-            else new_values.head(new_sample_size)
-        )
-
-        repeated_values = np.resize(sample_values, not_na_mask.sum())
-
-        column.iloc[not_na_mask] = repeated_values
-        return column
-
-    def _transform(self, df: pd.DataFrame) -> pd.Series:
-        # new_df = df.copy()
-
-        p = self._get_prob()
-        n_jobs = -1  # Using -1 will use all available cores
-        results = Parallel(n_jobs=n_jobs)(delayed(self._process_column)(df[col], p, self.take_last) for col in df.columns)
-
-        return pd.concat(results, axis=1)
-    
-
-import multiprocessing as mp
-from concurrent.futures import ThreadPoolExecutor
-class DistributionChangeV3(IssueTransfomer):
-    # Doesn't change the row count
-    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None,):
-        self.p = p
-        self.take_last = take_last
-        self.random_state = random_state
-
-    def _get_prob(self) -> float:
-        if isinstance(self.p, Iterable):
-            rng = np.random.default_rng(self.random_state)
-            return rng.uniform(self.p[0], self.p[1])
-        return self.p
-    
-    def _process_column(self, args):
-        column, p, take_last = args
         not_na_mask = column.notna()
 
         new_values = column.dropna().sort_values()
@@ -256,13 +177,23 @@ class DistributionChangeV3(IssueTransfomer):
 
         column.loc[not_na_mask] = repeated_values
         return column
-
-    def _transform(self, df: pd.DataFrame) -> pd.Series:
-
+    
+    def _transform_sequential(self, df: pd.DataFrame):
         p = self._get_prob()
-        args = ((df[col], p, self.take_last) for col in df.columns)
+        return df.apply(self._process_column, args=(p, self.take_last))
 
-        with ThreadPoolExecutor(max_workers=None) as executor:  # `None` will use as many workers as there are CPUs
-            results = executor.map(self._process_column, args)
+    def _transform_parallel(self, df: pd.DataFrame):
+        p = self._get_prob()
+
+        results = Parallel(n_jobs=self.n_jobs, prefer="threads")(
+            delayed(self._process_column)(df[col], p, self.take_last) for col in df.columns
+        )
     
         return pd.concat(list(results), axis=1)
+
+    def _transform(self, df: pd.DataFrame) -> pd.Series:
+        if self.n_jobs is None:
+            return self._transform_sequential(df)
+        else:
+            return self._transform_parallel(df)
+

@@ -12,7 +12,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from avh.aliases import Seed
 from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
-from avh.data_issues._issues import SchemaChange, IncreasedNulls, VolumeChangeUpsample, VolumeChangeDownsample, DistributionChange, DistributionChangeV2, DistributionChangeV3
+from avh.data_issues._issues import SchemaChange, IncreasedNulls, VolumeChangeUpsample, VolumeChangeDownsample, DistributionChange
 from avh.data_issues._numeric import UnitChange, NumericPerturbation
 from avh.data_issues._categorical import CasingChange
 from avh.data_issues._dataset import DQIssueDatasetGenerator
@@ -44,8 +44,6 @@ __all__ = [
     "VolumeChangeUpsample",
     "VolumeChangeDownsample",
     "DistributionChange",
-    "DistributionChangeV2",
-    "DistributionChangeV3",
     "NumericIssueTransformer",
     "UnitChange",
     "NumericPerturbation",
