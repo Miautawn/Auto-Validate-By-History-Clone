@@ -46,3 +46,4 @@ warn_unused_configs = true
 
 [tool.autoflake]
 in_place = true
+remove_all_unused_imports = true
