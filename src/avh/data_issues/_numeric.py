@@ -110,6 +110,11 @@ class NumericPerturbation(NumericIssueTransformer):
 
     def _parallel_perturb_column(self, col, p, perturbation_indices, perturbation_characters):
 
+        # By God as my witness, this the fastest running code out of all my tried setups.
+        # Apperantly, numpy arrays are easily serialized over processes by joblib,
+        #   so that's why input and output numpy arrays.
+        # However, numpy arrays are super slow to iterate one by one, 
+        #   so we have to covert them to regular python list.
         output_col = col.tolist()
         perturbation_indices = perturbation_indices.tolist()
         perturbation_characters = perturbation_characters.tolist()
