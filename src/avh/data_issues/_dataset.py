@@ -54,12 +54,12 @@ class DQIssueDatasetGenerator():
         for dtype_issues, dtype_columns in self._iterate_issues_by_column_dtypes(df):
             if len(dtype_columns) == 0:
                 continue
-                
+
             target_df = df[dtype_columns]
             for transformer, parameters in dtype_issues:
                 fitted_transformer = transformer().fit(target_df)
                 fitted_transformer = self._set_optional_transformer_parameters(fitted_transformer)
-                
+
                 for param_comb in self._get_parameter_combination(parameters):
                     # Note: generaly you should fit the estimator after setting parameters,
                     #   however, we know that in our case it's safe to do so and allows
@@ -67,7 +67,7 @@ class DQIssueDatasetGenerator():
                     fitted_transformer.set_params(**param_comb)
                     fitted_transformer_signature = repr(fitted_transformer)
                     modified_df = fitted_transformer.transform(target_df)
-                    
+
                     for column in dtype_columns:
                         dataset[column].append(
                             (fitted_transformer_signature, modified_df[column])
@@ -101,7 +101,7 @@ class DQIssueDatasetGenerator():
 
     def _get_categorical_columns(self, df: pd.DataFrame) -> List[str]:
         return list(df.select_dtypes(exclude="number").columns)
-    
+
     def _set_optional_transformer_parameters(self, transformer: IssueTransfomer) -> IssueTransfomer:
         transformer_params = transformer.get_params()
         if "random_state" in transformer_params:

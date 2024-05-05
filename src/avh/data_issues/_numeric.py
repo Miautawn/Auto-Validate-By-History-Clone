@@ -14,7 +14,7 @@ from sklearn.utils.validation import check_is_fitted
 from avh.aliases import Seed, FloatRange
 from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
 from joblib import Parallel, delayed
-    
+
 class UnitChange(NumericIssueTransformer):
     def __init__(self, p: FloatRange = 1.0, m: int = 2, random_state: Seed = None, randomize: bool = True):
         self.p = p
@@ -42,7 +42,7 @@ class UnitChange(NumericIssueTransformer):
             new_df.iloc[:sample_n] *= self.m
 
         return new_df
-    
+
 class NumericPerturbation(NumericIssueTransformer):
     def __init__(self, p: FloatRange = 0.5, random_state: Seed = None, n_jobs: Optional[int] = None):
         self.p = p
@@ -54,7 +54,7 @@ class NumericPerturbation(NumericIssueTransformer):
             rng = np.random.default_rng(self.random_state)
             return rng.uniform(self.p[0], self.p[1])
         return self.p
-    
+
     def _perturb_characters(self, x, p, perturbation_indices, perturbation_characters):
         char_array = list(str(x))
         char_array_n = len(char_array)
@@ -70,7 +70,7 @@ class NumericPerturbation(NumericIssueTransformer):
                 char_array[char_array_idx] = perturbation_characters[perturbation_idx]
 
         return "".join(char_array)
-    
+
     def _transform_sequential(self, df: pd.DataFrame):
         stringified_df = df.astype("string[pyarrow]")
         rng = np.random.default_rng(self.random_state)
@@ -79,7 +79,7 @@ class NumericPerturbation(NumericIssueTransformer):
         notna_mask = df.notna().to_numpy()
         char_counts = stringified_df.map(len, na_action="ignore").to_numpy().T.reshape(-1, 1)[notna_mask.T.flatten()]
         total_elements = notna_mask.sum()
-        
+
         max_char_count = char_counts.max()
         max_perturbed_char_count = int(max_char_count * p)
 
@@ -87,7 +87,7 @@ class NumericPerturbation(NumericIssueTransformer):
         perturbation_indices = rng.permuted(
             perturbation_indices, axis=1, out=perturbation_indices
         )[:, :max_perturbed_char_count]
-        
+
         perturbation_characters = rng.choice(
             list(string.digits), size=(total_elements, max_perturbed_char_count), replace=True
         )
@@ -113,7 +113,7 @@ class NumericPerturbation(NumericIssueTransformer):
         # By God as my witness, this the fastest running code out of all my tried setups.
         # Apperantly, numpy arrays are easily serialized over processes by joblib,
         #   so that's why input and output numpy arrays.
-        # However, numpy arrays are super slow to iterate one by one, 
+        # However, numpy arrays are super slow to iterate one by one,
         #   so we have to covert them to regular python list.
         output_col = col.tolist()
         perturbation_indices = perturbation_indices.tolist()
@@ -126,13 +126,13 @@ class NumericPerturbation(NumericIssueTransformer):
                 )
 
         return np.array(output_col)
-    
+
     def _transform_parallel(self, df: pd.DataFrame):
 
         rng = np.random.default_rng(self.random_state)
         p = self._get_prob()
         total_elements = df.shape[0]
-        
+
         # estimating max char count
         max_char_count = 30
         max_perturbed_char_count = int(max_char_count * p)
@@ -160,4 +160,3 @@ class NumericPerturbation(NumericIssueTransformer):
             return self._transform_sequential(df)
         else:
             return self._transform_parallel(df)
-

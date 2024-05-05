@@ -36,7 +36,7 @@ class ChebyshevConstraint(Constraint):
     def _fit(self, metric_history: List[float], raw_history: List[pd.Series], beta: float, strategy: str = "raw", **kwargs):
         assert strategy in ["raw", "std"], "Strategy can only be 'raw' or 'std'"
         self.last_reference_sample_ = raw_history[-1]
-    
+
         mean = np.nanmean(metric_history)
         var = np.nanvar(metric_history)
 
@@ -57,7 +57,7 @@ class ChebyshevConstraint(Constraint):
             m = self.metric.calculate(column)
         else:
             m = self.metric.calculate(column, self.last_reference_sample_)
-        
+
         return self._predict(m, **kwargs)
 
 class CantelliConstraint(Constraint):
@@ -72,7 +72,7 @@ class CantelliConstraint(Constraint):
         metrics.KlDivergence,
         metrics.JsDivergence
     )
-    
+
     def _fit(self, metric_history: List[float], raw_history: List[pd.Series], beta: float, strategy: str = "raw", **kwargs):
         assert strategy in ["raw", "std"], "Strategy can only be 'raw' or 'std'"
         self.last_reference_sample_ = raw_history[-1]

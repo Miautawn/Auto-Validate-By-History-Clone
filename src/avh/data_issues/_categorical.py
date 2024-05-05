@@ -12,7 +12,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from avh.aliases import Seed, FloatRange
 from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
-    
+
 class CasingChange(CategoricalIssueTransformer):
     def __init__(self, p: FloatRange = 0.5, random_state: Seed = None, randomize: bool = True):
         self.p = p
@@ -37,5 +37,5 @@ class CasingChange(CategoricalIssueTransformer):
             new_df.iloc[indexes] = new_df.iloc[indexes].apply(lambda x: x.str.swapcase(), axis=0)
         else:
             new_df.iloc[:sample_n] = new_df.iloc[:sample_n].apply(lambda x: x.str.swapcase(), axis=0)
-       
+
         return new_df

@@ -61,7 +61,7 @@ class Constraint(BaseEstimator):
         # if self.differencing_lag != 0:
         #     metric_repr = "{}.diff({})".format(metric_repr, self.differencing_lag)
         return metric_repr
-    
+
 
     def fit(
         self,
@@ -70,7 +70,7 @@ class Constraint(BaseEstimator):
         hotload_history: Optional[List[float]] = None,
         **kwargs,
     ) -> None:
-        
+
         assert self.is_metric_compatable(self.metric), (
             f"The {self.metric.__name__} is not compatible with "
             f"{self.__class__.__name__}"
@@ -81,7 +81,7 @@ class Constraint(BaseEstimator):
 
         self._is_fitted = True
         return self
-    
+
     def _fit(self, metric_history: List[float], **kwargs):
         self.u_lower_ = 0.0
         self.u_upper_ = 1.0

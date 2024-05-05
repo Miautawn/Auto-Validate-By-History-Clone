@@ -32,9 +32,5 @@ class CompleteRatio(SingleDistributionMetric):
         if column.empty:
             return 0.0
         return column.count() / column.size
-    
+
 #### Two distribution metrics
-
-    
-
-    

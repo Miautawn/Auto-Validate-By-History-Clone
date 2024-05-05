@@ -104,7 +104,7 @@ class AVH:
             (DistributionChange, {"p": [0.1, 0.5], "take_last": [True, False]}),
             (NumericPerturbation, {"p": [0.1, 0.5, 1.0]}),
         ]
-    
+
     @property
     def default_metrics(self) -> List[metrics.Metric]:
         return [
@@ -124,7 +124,7 @@ class AVH:
             metrics.KsDist,
             metrics.CohenD,
         ]
-    
+
     @property
     def default_constraint_estimators(self) -> List[constraints.Constraint]:
         return [
@@ -132,7 +132,7 @@ class AVH:
             constraints.ChebyshevConstraint,
             constraints.CantelliConstraint,
         ]
-    
+
     @property
     def default_beta_ranges(self) -> Dict[constraints.Constraint, Tuple[float, float, float]]:
         """
@@ -147,7 +147,7 @@ class AVH:
             constraints.CantelliConstraint: (1.0, 49.0, 1.0),
             constraints.CLTConstraint: (1.0, 5.0, 0.5),
         }
-    
+
     @property
     def default_production_beta_ranges(self) -> Dict[constraints.Constraint, Tuple[float, float, float]]:
         """
@@ -181,7 +181,7 @@ class AVH:
             random_state=random_state,
             n_jobs=self.n_jobs
         )
-    
+
     @utils.debug_timeit(f"{__name__}.AVH")
     def generate(
         self, history: List[pd.DataFrame], fpr_target: float,
@@ -215,11 +215,11 @@ class AVH:
             )
 
         return PS
-    
+
     def _generate_parallel_worker(self, column, history, DC, fpr_target, optimise_search_space):
         Q = self._generate_constraint_space(history, optimise_search_space)
         return column, self._generate_conjuctive_dq_program(Q, DC, fpr_target)
-    
+
     @utils.debug_timeit(f"{__name__}.AVH")
     def _generate_parallel(
         self, history: List[pd.DataFrame], fpr_target: float, optimise_search_space: bool
@@ -240,7 +240,7 @@ class AVH:
 
         del results
         return PS
-    
+
     def _get_beta_range(self, constraint_estimator: constraints.Constraint, optimise_search_space: bool) -> np.ndarray:
 
         default_beta_ranges = (1.0, 50.0, 1.0)
@@ -271,7 +271,7 @@ class AVH:
 
             for constraint_estimator in self.E:
                 if not constraint_estimator.is_metric_compatable(metric):
-                    continue                
+                    continue
 
                 for beta in self._get_beta_range(constraint_estimator, optimise_search_space):
                     q = constraint_estimator(
@@ -289,12 +289,12 @@ class AVH:
     def _precalculate_constraint_recalls(
         self, Q: List[constraints.Constraint], DC: List[Tuple[str, pd.Series]]
     ) -> List[Set[str]]:
-        
+
         return [
             {issue for issue, data in DC if not constraint.predict(data)}
             for constraint in Q
         ]
-    
+
     @utils.debug_timeit(f"{__name__}.AVH")
     def _precalculate_constraint_recalls_fast(
         self, Q: List[constraints.Constraint], DC: List[Tuple[str, pd.Series]]

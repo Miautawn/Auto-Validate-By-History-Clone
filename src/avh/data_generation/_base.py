@@ -146,7 +146,7 @@ class NumericColumn(DataColumn):
             name=self.name,
             dtype=self.dtype,
         )
-    
+
 class CategoricalColumn(DataColumn):
     """
     Abstract categorical/string column class.

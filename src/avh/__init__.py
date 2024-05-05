@@ -17,7 +17,7 @@ class TqdmLoggingHandler(logging.Handler):
             tqdm.tqdm.write(msg)
             self.flush()
         except Exception:
-            self.handleError(record) 
+            self.handleError(record)
 
 # Configure the root formatter
 logging.basicConfig(

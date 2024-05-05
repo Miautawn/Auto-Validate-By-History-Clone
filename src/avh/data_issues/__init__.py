@@ -18,8 +18,8 @@ from avh.data_issues._categorical import CasingChange
 from avh.data_issues._dataset import DQIssueDatasetGenerator
 
 """
-Provides the 'issue transformers', which can be used to simulate data quality issues 
-    for the AVH algorithm. 
+Provides the 'issue transformers', which can be used to simulate data quality issues
+    for the AVH algorithm.
 
 Note: not all issue transformers are identical in their functionality to the original paper's:
     https://github.com/microsoft/Auto-Validate-by-History/blob/main/gene_sample.py
@@ -51,8 +51,3 @@ __all__ = [
     "CasingChange"
     "DQIssueDatasetGenerator"
 ]
-
-
-
-
-

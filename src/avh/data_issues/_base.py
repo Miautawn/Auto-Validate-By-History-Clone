@@ -39,12 +39,11 @@ class IssueTransfomer(BaseEstimator, TransformerMixin):
 
     def _transform(self, df: pd.DataFrame) -> pd.Series:
         return df
-    
+
 class NumericIssueTransformer(IssueTransfomer):
     def _is_dataframe_compatable(self, df: pd.DataFrame) -> bool:
         return len(df.select_dtypes(exclude="number").columns) == 0
-    
+
 class CategoricalIssueTransformer(IssueTransfomer):
     def _is_dataframe_compatable(self, df: pd.DataFrame) -> bool:
         return len(df.select_dtypes("number").columns) == 0
-

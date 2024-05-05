@@ -15,7 +15,7 @@ from joblib import Parallel, delayed
 from avh.aliases import Seed, FloatRange, IntRange
 from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
 
-    
+
 class SchemaChange(IssueTransfomer):
     def __init__(self, p: FloatRange = 0.5, random_state: Seed = None, randomize: bool = True):
         self.p = p
@@ -38,7 +38,7 @@ class SchemaChange(IssueTransfomer):
             ), f"Column of dtype {dtype} does not have enough neighboars of the same type"
 
         return self
-    
+
     def _get_prob(self) -> float:
         if isinstance(self.p, Iterable):
             rng = np.random.default_rng(self.random_state)
@@ -146,7 +146,7 @@ class VolumeChangeDownsample(IssueTransfomer):
             return df.iloc[indexes]
         else:
             return df.iloc[:sample_n]
-    
+
 class DistributionChange(IssueTransfomer):
     # Doesn't change the row count
     def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None, n_jobs: Optional[int] = None):
@@ -160,7 +160,7 @@ class DistributionChange(IssueTransfomer):
             rng = np.random.default_rng(self.random_state)
             return rng.uniform(self.p[0], self.p[1])
         return self.p
-    
+
     def _process_column(self, column: pd.Series, p: float, take_last: bool):
         not_na_mask = column.notna()
 
@@ -177,7 +177,7 @@ class DistributionChange(IssueTransfomer):
 
         column.loc[not_na_mask] = repeated_values
         return column
-    
+
     def _transform_sequential(self, df: pd.DataFrame):
         p = self._get_prob()
         return df.apply(self._process_column, args=(p, self.take_last))
@@ -188,7 +188,7 @@ class DistributionChange(IssueTransfomer):
         results = Parallel(n_jobs=self.n_jobs, prefer="threads")(
             delayed(self._process_column)(df[col], p, self.take_last) for col in df.columns
         )
-    
+
         return pd.concat(list(results), axis=1)
 
     def _transform(self, df: pd.DataFrame) -> pd.Series:
@@ -196,4 +196,3 @@ class DistributionChange(IssueTransfomer):
             return self._transform_sequential(df)
         else:
             return self._transform_parallel(df)
-

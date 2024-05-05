@@ -33,7 +33,7 @@ class CategoricalMetricMixin():
     @classmethod
     def is_column_compatable(self, dtype: Any) -> bool:
         return not pd.api.types.is_numeric_dtype(dtype)
-    
+
 
 # Different input type subclasses
 class SingleDistributionMetric(Metric):
@@ -47,7 +47,7 @@ class SingleDistributionMetric(Metric):
         if isinstance(data, list):
             return list(map(self._calculate, data))
         return self._calculate(data)
-    
+
     @classmethod
     @abstractmethod
     def _calculate(self, data: pd.Series) -> float:
@@ -58,8 +58,8 @@ class SingleDistributionMetric(Metric):
         if data.count() == 0:
             return True
         return False
-    
-class TwoDistributionMetric(Metric):    
+
+class TwoDistributionMetric(Metric):
     @classmethod
     def calculate(
         self,
@@ -75,7 +75,7 @@ class TwoDistributionMetric(Metric):
             self._calculate(data[i], data[i - 1])
             for i in range(1, len(data))
         ]
-    
+
     @classmethod
     @abstractmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
@@ -86,5 +86,3 @@ class TwoDistributionMetric(Metric):
         if data.count() == 0 or reference_data.count() == 0:
             return True
         return False
-
-

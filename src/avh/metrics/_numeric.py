@@ -54,7 +54,7 @@ class Range(NumericMetricMixin, SingleDistributionMetric):
         if self._is_empty(column):
             return 0.0
         return column.max() - column.min()
-    
+
 #### Two distribution metrics
 
 class EMD(NumericMetricMixin, TwoDistributionMetric):
@@ -66,7 +66,7 @@ class EMD(NumericMetricMixin, TwoDistributionMetric):
         # Have to drop na, since if there is at least 1 null value,
         #   the scipy.wasserstein_distance() will return null
         return wasserstein_distance(new_sample.dropna(), old_sample.dropna())
-    
+
 class KsDist(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
@@ -75,7 +75,7 @@ class KsDist(NumericMetricMixin, TwoDistributionMetric):
 
         _, ks_p_val = ks_2samp(new_sample, old_sample, nan_policy="omit")
         return 1 - ks_p_val
-    
+
 class CohenD(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
@@ -95,11 +95,11 @@ class CohenD(NumericMetricMixin, TwoDistributionMetric):
 
         var_new = np.nanvar(new_sample, ddof=1)
         var_old = np.nanvar(old_sample, ddof=1)
-    
+
         sp = np.sqrt(((n_new-1) * var_new + (n_old-1) * var_old) / degrees_of_freedom)
 
         return abs((mu_new-mu_old) / (sp + 1e-10))
-    
+
 class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
@@ -110,7 +110,7 @@ class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
         p, e = np.histogram(new_sample.dropna(), 10)
         q, _ = np.histogram(old_sample.dropna(), e)
 
-        # If the new sample is that widely different such that reference sample 
+        # If the new sample is that widely different such that reference sample
         #   doesn't have any values across it's histogram edges,
         #   don't bother computing and just return np.inf
         if sum(q) == 0:
@@ -119,7 +119,7 @@ class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
         # Finding support intersections where there are no 0's
         p, q = zip(*[(x, y) for x, y in zip(p, q) if x != 0 and y != 0])
         return entropy(p, q)
-    
+
 class JsDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
@@ -130,7 +130,7 @@ class JsDivergence(NumericMetricMixin, TwoDistributionMetric):
         p, e = np.histogram(new_sample.dropna(), 10)
         q, _ = np.histogram(old_sample.dropna(), e)
 
-        # If the new sample is that widely different such that reference sample 
+        # If the new sample is that widely different such that reference sample
         #   doesn't have any values across it's histogram edges,
         #   don't bother computing and just return np.inf
         if sum(q) == 0:
