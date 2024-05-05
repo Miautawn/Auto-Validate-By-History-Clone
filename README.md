@@ -78,6 +78,6 @@ PS["money"]
 # As you can see, the AVH algorithm while correct in saying that 95% of DataCompleteness
 #   is a statistical invariate (as specified in our data generation) and anything outside it would
 #   mean that data is anomalous from our previous 'training data', it does not take the context
-#   of the metric into the account: in production, you would probably desire CompleteRatio metric to be 
+#   of the metric into the account: in production, you would probably desire CompleteRatio metric to be
 #   in the range of [95% - 100%], thus it is left to the user to make necessary adjustments.
 ```

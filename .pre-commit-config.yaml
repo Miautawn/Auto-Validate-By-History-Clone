@@ -24,6 +24,10 @@ repos:
         language: system
         always_run: true
         pass_filenames: false
+      - id: autoflake
+        name: remove unused imports
+        entry: poetry run autoflake
+        language: system
       - id: isort
         name: isort
         entry: poetry run isort
