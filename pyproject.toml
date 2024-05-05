@@ -45,3 +45,4 @@ files = "src/**/*.py"
 warn_unused_configs = true
 
 [tool.autoflake]
+in_place = true
