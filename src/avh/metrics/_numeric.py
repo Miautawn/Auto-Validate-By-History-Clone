@@ -103,6 +103,9 @@ class CohenD(NumericMetricMixin, TwoDistributionMetric):
 class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if self._is_empty(new_sample, old_sample):
+            return np.inf
+
         # Don't have to normalize it, as scipy.stats.entropy() will do it for us
         p, e = np.histogram(new_sample.dropna(), 10)
         q, _ = np.histogram(old_sample.dropna(), e)
@@ -120,6 +123,9 @@ class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
 class JsDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if self._is_empty(new_sample, old_sample):
+            return np.inf
+
         # Don't have to normalize it, as scipy.distance.jensenshannon() will do it for us
         p, e = np.histogram(new_sample.dropna(), 10)
         q, _ = np.histogram(old_sample.dropna(), e)
