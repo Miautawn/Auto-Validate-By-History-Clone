@@ -1,8 +1,20 @@
+from typing import Type, TypeAlias
 
-
-from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
-from avh.data_issues._issues import SchemaChange, IncreasedNulls, VolumeChangeUpsample, VolumeChangeDownsample, DistributionChange
-from avh.data_issues._numeric import UnitChange, NumericPerturbation
+from avh.data_issues._base import (
+    CategoricalIssueTransformer,
+    IssueTransfomer,
+    NumericIssueTransformer,
+)
+from avh.data_issues._categorical import CasingChange
+from avh.data_issues._dataset import DQIssueDatasetGenerator
+from avh.data_issues._issues import (
+    DistributionChange,
+    IncreasedNulls,
+    SchemaChange,
+    VolumeChangeDownsample,
+    VolumeChangeUpsample,
+)
+from avh.data_issues._numeric import NumericPerturbation, UnitChange
 
 """
 Provides the 'issue transformers', which can be used to simulate data quality issues
@@ -24,8 +36,11 @@ Note: not all issue transformers are identical in their functionality to the ori
             This way we try to isolate the effect of distribution shift.
 """
 
+IssueType: TypeAlias = Type[IssueTransfomer]
+
 __all__ = [
     "IssueTransfomer",
+    "IssueType",
     "SchemaChange",
     "IncreasedNulls",
     "VolumeChangeUpsample",
@@ -35,6 +50,6 @@ __all__ = [
     "UnitChange",
     "NumericPerturbation",
     "CategoricalIssueTransformer",
-    "CasingChange"
-    "DQIssueDatasetGenerator"
+    "CasingChange",
+    "DQIssueDatasetGenerator",
 ]

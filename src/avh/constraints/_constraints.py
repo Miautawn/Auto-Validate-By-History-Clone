@@ -1,13 +1,14 @@
 import math
-from typing import List
+from typing import List, Tuple, cast
 
-import pandas as pd
 import numpy as np
-from sklearn.base import check_is_fitted
+import pandas as pd
 from scipy import integrate
+from sklearn.base import check_is_fitted
 
 import avh.metrics as metrics
 from avh.constraints._base import Constraint
+
 
 class ConstantConstraint(Constraint):
     """
@@ -15,7 +16,7 @@ class ConstantConstraint(Constraint):
         which operates on manually provided threshold values
     """
 
-    def __init__(self, metric: metrics.Metric, u_lower: float, u_upper: float, expected_fpr):
+    def __init__(self, metric: metrics.MetricType, u_lower: float, u_upper: float, expected_fpr):
         super().__init__(metric)
 
         # technically not following the sklearn style guide :(
@@ -32,7 +33,14 @@ class ChebyshevConstraint(Constraint):
     Chebyshev!
     """
 
-    def _fit(self, metric_history: List[float], raw_history: List[pd.Series], beta: float, strategy: str = "raw", **kwargs):
+    def _fit(
+        self,
+        metric_history: List[float],
+        raw_history: List[pd.Series],
+        beta: float,
+        strategy: str = "raw",
+        **kwargs
+    ):
         assert strategy in ["raw", "std"], "Strategy can only be 'raw' or 'std'"
         self.last_reference_sample_ = raw_history[-1]
 
@@ -57,22 +65,30 @@ class ChebyshevConstraint(Constraint):
         else:
             m = self.metric.calculate(column, self.last_reference_sample_)
 
-        return self._predict(m, **kwargs)
+        return self._predict(cast(float, m), **kwargs)
+
 
 class CantelliConstraint(Constraint):
     """
     Cantelli!
     """
 
-    compatable_metrics = (
+    compatable_metrics: Tuple[metrics.MetricType, ...] = (
         metrics.EMD,
         metrics.KsDist,
         metrics.CohenD,
         metrics.KlDivergence,
-        metrics.JsDivergence
+        metrics.JsDivergence,
     )
 
-    def _fit(self, metric_history: List[float], raw_history: List[pd.Series], beta: float, strategy: str = "raw", **kwargs):
+    def _fit(
+        self,
+        metric_history: List[float],
+        raw_history: List[pd.Series],
+        beta: float,
+        strategy: str = "raw",
+        **kwargs
+    ):
         assert strategy in ["raw", "std"], "Strategy can only be 'raw' or 'std'"
         self.last_reference_sample_ = raw_history[-1]
 
@@ -93,13 +109,13 @@ class CantelliConstraint(Constraint):
         check_is_fitted(self)
 
         m = self.metric.calculate(column, self.last_reference_sample_)
-        prediction = self._predict(m, **kwargs)
+        prediction = self._predict(cast(float, m), **kwargs)
 
         return prediction
 
 
 class CLTConstraint(Constraint):
-    compatable_metrics = (
+    compatable_metrics: Tuple[metrics.MetricType, ...] = (
         metrics.RowCount,
         metrics.Mean,
         metrics.MeanStringLength,
@@ -108,7 +124,7 @@ class CLTConstraint(Constraint):
         metrics.CompleteRatio,
     )
 
-    def _bell_function(sefl, x):
+    def _bell_function(self, x):
         return math.pow(math.e, -(x**2))
 
     def _fit(self, metric_history: List[float], beta: float, strategy: str = "raw", **kwargs):
@@ -117,7 +133,7 @@ class CLTConstraint(Constraint):
         mean = np.nanmean(metric_history)
         std = np.nanstd(metric_history)
 
-        beta = beta if strategy == "raw" else std * beta
+        beta = beta if strategy == "raw" else float(std * beta)
 
         self.u_upper_ = mean + beta
         self.u_lower_ = mean - beta

@@ -1,10 +1,10 @@
 from typing import Iterable, Optional
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from joblib import Parallel, delayed
 
-from avh.aliases import Seed, FloatRange, IntRange
+from avh.aliases import FloatRange, IntRange, Seed
 from avh.data_issues._base import IssueTransfomer
 
 
@@ -19,9 +19,8 @@ class SchemaChange(IssueTransfomer):
 
         # Dictionary of {dtype: [column indexes of that type]}
         self.dtype_metadata_ = {
-            dtype: column_index.get_indexer_for(
-                df.select_dtypes(dtype).columns
-            ) for dtype in df.dtypes.unique()
+            dtype: column_index.get_indexer_for(df.select_dtypes(dtype).columns)
+            for dtype in df.dtypes.unique()
         }
 
         for dtype, column_indexes in self.dtype_metadata_.items():
@@ -86,6 +85,7 @@ class IncreasedNulls(IssueTransfomer):
 
         return new_df
 
+
 class VolumeChangeUpsample(IssueTransfomer):
     def __init__(self, f: IntRange = 2, random_state: Seed = None, randomize: bool = True):
         """
@@ -96,7 +96,7 @@ class VolumeChangeUpsample(IssueTransfomer):
         self.random_state = random_state
         self.randomize = randomize
 
-    def _get_factor(self) -> float:
+    def _get_factor(self) -> int:
         if isinstance(self.f, Iterable):
             rng = np.random.default_rng(self.random_state)
             return rng.integers(self.f[0], self.f[1])
@@ -110,11 +110,12 @@ class VolumeChangeUpsample(IssueTransfomer):
 
         if self.randomize:
             rng = np.random.default_rng(self.random_state)
-            indexes = rng.choice(range(len(df)), size=sample_n, replace=True)
+            indexes = rng.choice(range(n), size=sample_n, replace=True)
             return df.iloc[indexes]
         else:
-            indexes = np.tile(range(len(df)), factor)
+            indexes = np.tile(range(n), factor)
             return df.iloc[indexes]
+
 
 class VolumeChangeDownsample(IssueTransfomer):
     def __init__(self, f: FloatRange = 0.5, random_state: Seed = None, randomize: bool = True):
@@ -134,14 +135,21 @@ class VolumeChangeDownsample(IssueTransfomer):
 
         if self.randomize:
             rng = np.random.default_rng(self.random_state)
-            indexes = rng.choice(range(len(df)), size=sample_n, replace=False)
+            indexes = rng.choice(range(n), size=sample_n, replace=False)
             return df.iloc[indexes]
         else:
             return df.iloc[:sample_n]
 
+
 class DistributionChange(IssueTransfomer):
     # Doesn't change the row count
-    def __init__(self, p: FloatRange = 0.1, take_last: bool = True, random_state: Seed = None, n_jobs: Optional[int] = None):
+    def __init__(
+        self,
+        p: FloatRange = 0.1,
+        take_last: bool = True,
+        random_state: Seed = None,
+        n_jobs: Optional[int] = None,
+    ):
         self.p = p
         self.take_last = take_last
         self.random_state = random_state
@@ -160,9 +168,7 @@ class DistributionChange(IssueTransfomer):
         new_sample_size = max(int(len(new_values) * p), 1)
 
         sample_values = (
-            new_values.tail(new_sample_size)
-            if take_last
-            else new_values.head(new_sample_size)
+            new_values.tail(new_sample_size) if take_last else new_values.head(new_sample_size)
         )
 
         repeated_values = np.resize(sample_values, not_na_mask.sum())

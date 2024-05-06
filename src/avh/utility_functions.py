@@ -1,10 +1,11 @@
 import logging
-from typing import Union, Any
+import time
 from collections.abc import Iterable
 from numbers import Number
-import time
+from typing import Any, Union
 
 import numpy as np
+
 
 def debug_timeit(local_logger_name=None):
     def decorator(function):
@@ -20,10 +21,13 @@ def debug_timeit(local_logger_name=None):
                 f"{function.__module__}.{function.__name__} Took {elapsed_time_ms:.4f} ms to execute."
             )
             return result
+
         return wrapper
+
     return decorator
 
-def diff(data: Iterable, period: int) -> np.array:
+
+def diff(data: Iterable, period: int) -> np.ndarray:
     """
     Perform difference of the elements separated by the period.
     (Useful for time series differencing)
@@ -36,12 +40,14 @@ def diff(data: Iterable, period: int) -> np.array:
         return data
     return np.concatenate((np.full(period, np.nan), data[period:] - data[:-period]))
 
+
 def function_repr(repr):
     def wrapper(func):
         setattr(func, "__function_repr__", repr)
         return func
 
     return wrapper
+
 
 @function_repr("identity")
 def identity(x: Any) -> Any:
@@ -50,16 +56,15 @@ def identity(x: Any) -> Any:
     """
     return x
 
+
 @function_repr("log")
-def safe_log(x: Union[Number, Iterable]) -> np.array:
+def safe_log(x: Union[Number, Iterable]) -> np.ndarray:
     """
     Perform log(x), but with safeguards
         against cases where x == 0
     """
     data = np.array(x)
-    log_data = np.log(
-        data, out=np.zeros_like(data, dtype=np.float32), where=(data != 0)
-    )
+    log_data = np.log(data, out=np.zeros_like(data, dtype=np.float32), where=(data != 0))
 
     if log_data.shape:
         return log_data

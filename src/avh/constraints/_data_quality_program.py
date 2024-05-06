@@ -1,7 +1,9 @@
+from typing import List, Optional, Set
+
 import pandas as pd
 
-from typing import Optional, List, Set
 from avh.constraints._base import Constraint
+
 
 class ConjuctivDQProgram:
     def __init__(

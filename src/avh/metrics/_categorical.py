@@ -1,10 +1,10 @@
-
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from avh.metrics._base import SingleDistributionMetric, CategoricalMetricMixin
+from avh.metrics._base import CategoricalMetricMixin, SingleDistributionMetric
 
 #### Single distribution metrics
+
 
 class DistinctCount(CategoricalMetricMixin, SingleDistributionMetric):
     @classmethod
@@ -18,6 +18,7 @@ class MeanStringLength(CategoricalMetricMixin, SingleDistributionMetric):
         if self._is_empty(column):
             return 0.0
         return np.nanmean(column.str.len())
+
 
 class MeanDigitLength(CategoricalMetricMixin, SingleDistributionMetric):
     @classmethod

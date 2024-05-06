@@ -1,10 +1,11 @@
-from typing import Any, Optional, Callable, Union
 from abc import ABC, abstractmethod
+from typing import Any, Callable, Optional
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from avh.aliases import Seed
+
 
 class DataColumn(ABC):
     """
@@ -33,8 +34,7 @@ class DataColumn(ABC):
 
     @property
     @abstractmethod
-    def dtype(self) -> Any:
-        ...
+    def dtype(self) -> Any: ...
 
     @abstractmethod
     def generate(self, n: int, i: int = 0) -> pd.Series:
@@ -50,6 +50,7 @@ class DataColumn(ABC):
             Can be useful for modifying the genration parameters based on "time"
         """
         ...
+
 
 class NumericColumn(DataColumn):
     """
@@ -89,7 +90,7 @@ class NumericColumn(DataColumn):
         maximum: float = np.inf,
         scale: float = 1.0,
         shift: float = 0.0,
-        dtype: Union[np.float32, np.int32] = np.float32,
+        dtype: type = np.float32,
         parameter_function: Optional[Callable] = None,
         **kwargs
     ):
@@ -128,7 +129,7 @@ class NumericColumn(DataColumn):
         ...
 
     @abstractmethod
-    def _generate(self, n: int) -> np.array:
+    def _generate(self, n: int) -> pd.Series:
         """
         Template method for generating data.
         """
@@ -138,7 +139,7 @@ class NumericColumn(DataColumn):
         data = self._generate(n) * self._scale + self._shift
         data = np.clip(data, self._minimum, self._maximum)
 
-        if self._parameter_function:
+        if self._parameter_function is not None:
             self._update_parameters(n, i)
 
         return pd.Series(
@@ -146,6 +147,7 @@ class NumericColumn(DataColumn):
             name=self.name,
             dtype=self.dtype,
         )
+
 
 class CategoricalColumn(DataColumn):
     """
@@ -170,7 +172,7 @@ class CategoricalColumn(DataColumn):
         return "string[pyarrow]"
 
     @abstractmethod
-    def _generate(self, n: int) -> np.array:
+    def _generate(self, n: int) -> pd.Series:
         """
         Template method for generating data.
         """

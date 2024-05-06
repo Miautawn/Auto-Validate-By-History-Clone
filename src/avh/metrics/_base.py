@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import List, Union, Any, Optional
+from typing import Any, List, Optional, Union
 
 import pandas as pd
+
 
 class Metric(ABC):
     """
@@ -14,19 +15,21 @@ class Metric(ABC):
 
     @classmethod
     @abstractmethod
-    def calculate(self, data) -> Union[float, List[float]]:
+    def calculate(self, *args) -> Union[float, List[float]]:
         """
         Method for calculating the target metric from given data
         """
         ...
 
+
 # Metric dtype mixins
-class NumericMetricMixin():
+class NumericMetricMixin:
     @classmethod
     def is_column_compatable(self, dtype: Any) -> bool:
         return pd.api.types.is_numeric_dtype(dtype)
 
-class CategoricalMetricMixin():
+
+class CategoricalMetricMixin:
     @classmethod
     def is_column_compatable(self, dtype: Any) -> bool:
         return not pd.api.types.is_numeric_dtype(dtype)
@@ -35,9 +38,7 @@ class CategoricalMetricMixin():
 # Different input type subclasses
 class SingleDistributionMetric(Metric):
     @classmethod
-    def calculate(
-        self, data: Union[pd.Series, List[pd.Series]]
-    ) -> Union[float, List[float]]:
+    def calculate(self, data: Union[pd.Series, List[pd.Series]]) -> Union[float, List[float]]:
         """
         Method for calculating the target metric from given data
         """
@@ -47,8 +48,7 @@ class SingleDistributionMetric(Metric):
 
     @classmethod
     @abstractmethod
-    def _calculate(self, data: pd.Series) -> float:
-        ...
+    def _calculate(self, data: pd.Series) -> float: ...
 
     @classmethod
     def _is_empty(self, data: pd.Series) -> bool:
@@ -56,27 +56,22 @@ class SingleDistributionMetric(Metric):
             return True
         return False
 
+
 class TwoDistributionMetric(Metric):
     @classmethod
     def calculate(
-        self,
-        data: Union[pd.Series, List[pd.Series]],
-        referene_data: Optional[pd.Series] = None
+        self, data: Union[pd.Series, List[pd.Series]], referene_data: Optional[pd.Series] = None
     ) -> Union[float, List[float]]:
         """
         Funny magic
         """
         if referene_data is not None:
             return self._calculate(data, referene_data)
-        return [
-            self._calculate(data[i], data[i - 1])
-            for i in range(1, len(data))
-        ]
+        return [self._calculate(data[i], data[i - 1]) for i in range(1, len(data))]
 
     @classmethod
     @abstractmethod
-    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
-        ...
+    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float: ...
 
     @classmethod
     def _is_empty(self, data: pd.Series, reference_data: pd.Series) -> bool:

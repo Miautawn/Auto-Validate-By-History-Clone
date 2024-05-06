@@ -1,12 +1,12 @@
-from scipy.stats import wasserstein_distance, ks_2samp, entropy
-from scipy.spatial.distance import jensenshannon
-
-import pandas as pd
 import numpy as np
+import pandas as pd
+from scipy.spatial.distance import jensenshannon
+from scipy.stats import entropy, ks_2samp, wasserstein_distance
 
-from avh.metrics._base import SingleDistributionMetric, TwoDistributionMetric, NumericMetricMixin
+from avh.metrics._base import NumericMetricMixin, SingleDistributionMetric, TwoDistributionMetric
 
 #### Single distribution metrics
+
 
 class Min(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
@@ -14,6 +14,7 @@ class Min(NumericMetricMixin, SingleDistributionMetric):
         if self._is_empty(column):
             return 0.0
         return column.min()
+
 
 class Max(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
@@ -30,6 +31,7 @@ class Mean(NumericMetricMixin, SingleDistributionMetric):
             return 0.0
         return column.mean()
 
+
 class Median(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
     def _calculate(self, column: pd.Series) -> float:
@@ -45,6 +47,7 @@ class Sum(NumericMetricMixin, SingleDistributionMetric):
             return 0.0
         return column.sum()
 
+
 class Range(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
     def _calculate(self, column: pd.Series) -> float:
@@ -52,7 +55,9 @@ class Range(NumericMetricMixin, SingleDistributionMetric):
             return 0.0
         return column.max() - column.min()
 
+
 #### Two distribution metrics
+
 
 class EMD(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
@@ -64,6 +69,7 @@ class EMD(NumericMetricMixin, TwoDistributionMetric):
         #   the scipy.wasserstein_distance() will return null
         return wasserstein_distance(new_sample.dropna(), old_sample.dropna())
 
+
 class KsDist(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
@@ -72,6 +78,7 @@ class KsDist(NumericMetricMixin, TwoDistributionMetric):
 
         _, ks_p_val = ks_2samp(new_sample, old_sample, nan_policy="omit")
         return 1 - ks_p_val
+
 
 class CohenD(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
@@ -93,9 +100,10 @@ class CohenD(NumericMetricMixin, TwoDistributionMetric):
         var_new = np.nanvar(new_sample, ddof=1)
         var_old = np.nanvar(old_sample, ddof=1)
 
-        sp = np.sqrt(((n_new-1) * var_new + (n_old-1) * var_old) / degrees_of_freedom)
+        sp = np.sqrt(((n_new - 1) * var_new + (n_old - 1) * var_old) / degrees_of_freedom)
 
-        return abs((mu_new-mu_old) / (sp + 1e-10))
+        return abs((mu_new - mu_old) / (sp + 1e-10))
+
 
 class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
@@ -116,6 +124,7 @@ class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
         # Finding support intersections where there are no 0's
         p, q = zip(*[(x, y) for x, y in zip(p, q) if x != 0 and y != 0])
         return entropy(p, q)
+
 
 class JsDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod

@@ -1,7 +1,11 @@
-from avh.data_generation._base import DataColumn, NumericColumn, CategoricalColumn
-from avh.data_generation._pipeline import DataGenerationPipeline
+from avh.data_generation._base import CategoricalColumn, DataColumn, NumericColumn
 from avh.data_generation._categorical import RandomCategoricalColumn, StaticCategoricalColumn
-from avh.data_generation._numeric import UniformNumericColumn, NormalNumericColumn, BetaNumericColumn
+from avh.data_generation._numeric import (
+    BetaNumericColumn,
+    NormalNumericColumn,
+    UniformNumericColumn,
+)
+from avh.data_generation._pipeline import DataGenerationPipeline
 
 __all__ = [
     "DataColumn",
@@ -12,5 +16,5 @@ __all__ = [
     "NumericColumn",
     "UniformNumericColumn",
     "NormalNumericColumn",
-    "BetaNumericColumn"
+    "BetaNumericColumn",
 ]

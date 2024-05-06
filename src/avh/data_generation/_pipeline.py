@@ -1,11 +1,12 @@
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 from avh.aliases import Seed
-from avh.data_issues import IssueTransfomer
 from avh.data_generation._base import DataColumn
+from avh.data_issues import IssueTransfomer
+
 
 class DataGenerationPipeline:
     """
@@ -44,14 +45,13 @@ class DataGenerationPipeline:
     def __init__(
         self,
         columns: List[DataColumn],
-
         # TODO: add an aliased type field for this monstrosity
         issues: Optional[List[Tuple[str, List[IssueTransfomer]]]] = None,
         random_state: Seed = None,
     ):
         self._columns = columns
         self._issues = [] if issues is None else issues
-        self.random_state = random_state
+        self.random_state = random_state  # type: ignore
         # self.iteration = 0
 
     @property
@@ -78,7 +78,7 @@ class DataGenerationPipeline:
                 if "random_state" in issue.get_params():
                     issue.set_params(random_state=self.random_state)
 
-    def generate(self, n: int) -> pd.DataFrame():
+    def generate(self, n: int) -> pd.DataFrame:
         """
         Combines the outputs of each specified DataColumn into a dataframe
             of length n
@@ -90,13 +90,11 @@ class DataGenerationPipeline:
         # )
         # self.iteration += 1
 
-        data = pd.concat(
-            [column.generate(n) for column in self._columns], axis=1
-        )
+        data = pd.concat([column.generate(n) for column in self._columns], axis=1)
         data = self._apply_issues(data)
         return data
 
-    def generate_uniform(self, lower: int, higher: int) -> pd.DataFrame():
+    def generate_uniform(self, lower: int, higher: int) -> pd.DataFrame:
         """
         Combines the outputs of each specified DataColumn into a dataframe
             of variable length, randomly picked from uniform PDF
@@ -104,7 +102,7 @@ class DataGenerationPipeline:
         rng = self.random_state
         return self.generate(max(1, rng.integers(lower, higher)))
 
-    def generate_normal(self, mean: int, std: int) -> pd.DataFrame():
+    def generate_normal(self, mean: int, std: int) -> pd.DataFrame:
         """
         Combines the outputs of each specified DataColumn into a dataframe
             of variable length, randomly picked from normal PDF
@@ -124,8 +122,6 @@ class DataGenerationPipeline:
                     column_dtype = data[col].dtype
                     dtype_columns = data.select_dtypes(column_dtype).columns
                     transformed_column = issue.fit_transform(data[dtype_columns])[col]
-                    data = pd.concat(
-                        [data.drop(col, axis=1), transformed_column], axis=1
-                    )
+                    data = pd.concat([data.drop(col, axis=1), transformed_column], axis=1)
 
         return data

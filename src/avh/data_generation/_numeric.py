@@ -1,4 +1,3 @@
-
 import numpy as np
 
 from avh.data_generation._base import NumericColumn
@@ -26,11 +25,12 @@ class UniformNumericColumn(NumericColumn):
         self._lower_bound = lower_bound
         self._upper_bound = upper_bound
 
-    def _generate(self, n: int) -> np.array:
+    def _generate(self, n: int) -> np.ndarray:
         rng = np.random.default_rng(self.random_state)
         return rng.uniform(self._lower_bound, self._upper_bound, n)
 
     def _update_parameters(self, n: int, i: int):
+        assert self._parameter_function is not None  # Mypy complains otherwise
         self._lower_bound, self._upper_bound = self._parameter_function(
             n, i, self._lower_bound, self._upper_bound
         )
@@ -58,11 +58,12 @@ class NormalNumericColumn(NumericColumn):
         self._mean = mean
         self._std = std
 
-    def _generate(self, n: int) -> np.array:
+    def _generate(self, n: int) -> np.ndarray:
         rng = np.random.default_rng(self.random_state)
         return rng.normal(self._mean, self._std, n)
 
     def _update_parameters(self, n: int, i: int):
+        assert self._parameter_function is not None  # Mypy complains otherwise
         self._mean, self._std = self._parameter_function(n, i, self._mean, self._std)
 
 
@@ -87,20 +88,15 @@ class BetaNumericColumn(NumericColumn):
         Any other parameters will be forwarded back to parent classes
     """
 
-    def __init__(
-        self,
-        name: str,
-        alfa: float,
-        beta: float,
-        **kwargs
-    ):
+    def __init__(self, name: str, alfa: float, beta: float, **kwargs):
         super().__init__(name, **kwargs)
         self._alfa = alfa
         self._beta = beta
 
-    def _generate(self, n: int) -> np.array:
+    def _generate(self, n: int) -> np.ndarray:
         rng = np.random.default_rng(self.random_state)
         return rng.beta(self._alfa, self._beta, n)
 
     def _update_parameters(self, n: int, i: int):
+        assert self._parameter_function is not None  # Mypy complains otherwise
         self._alfa, self._beta = self._parameter_function(n, i, self._alfa, self._beta)

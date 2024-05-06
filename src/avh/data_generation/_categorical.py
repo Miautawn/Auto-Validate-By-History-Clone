@@ -30,7 +30,7 @@ class StaticCategoricalColumn(CategoricalColumn):
         super().__init__(name, **kwargs)
         self._values = values
 
-    def _generate(self, n: int) -> np.array:
+    def _generate(self, n: int) -> np.ndarray:
         assert n == len(self._values), (
             f"The StaticCategoricalColumn does not have equal number of values "
             f"to fill a column of size {n}"
@@ -58,12 +58,10 @@ class RandomCategoricalColumn(CategoricalColumn):
         super().__init__(name, **kwargs)
         self._values = values
 
-    def _generate(self, n: int) -> np.array:
+    def _generate(self, n: int) -> np.ndarray:
         rng = np.random.default_rng(self.random_state)
         if self._values:
             return rng.choice(self._values, n, replace=True)
         else:
             random_idx = rng.integers(0, len(raw_book) - 20, n)
-            return np.array(
-                [raw_book[random_idx[i] : random_idx[i] + 20] for i in range(n)]
-            )
+            return np.array([raw_book[random_idx[i] : random_idx[i] + 20] for i in range(n)])

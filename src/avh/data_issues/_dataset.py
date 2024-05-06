@@ -1,19 +1,30 @@
-from typing import Tuple, List, Union, Iterable, Optional
 from itertools import product
+from typing import Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import pandas as pd
 from tqdm import tqdm
 
 from avh.aliases import Seed
-from avh.data_issues._base import IssueTransfomer, NumericIssueTransformer, CategoricalIssueTransformer
+from avh.data_issues._base import (
+    CategoricalIssueTransformer,
+    IssueTransfomer,
+    NumericIssueTransformer,
+)
 
-class DQIssueDatasetGenerator():
+
+class DQIssueDatasetGenerator:
     """
     Produces D(C) for declared issue transfomers
         and cartesian product of their parameters
     """
 
-    def __init__(self, issues: List[Tuple[IssueTransfomer, dict]], random_state: Seed = None, verbose: int = 1, n_jobs: Optional[int] = None):
+    def __init__(
+        self,
+        issues: List[Tuple[Type[IssueTransfomer], dict]],
+        random_state: Seed = None,
+        verbose: int = 1,
+        n_jobs: Optional[int] = None,
+    ):
         self._random_state = random_state
         self._numeric_issues = []
         self._categorical_issues = []
@@ -42,7 +53,7 @@ class DQIssueDatasetGenerator():
         self._verbose = level
 
     def generate(self, df: pd.DataFrame):
-        dataset = {column: [] for column in df.columns}
+        dataset: Dict[str, list] = {column: [] for column in df.columns}
 
         pbar = tqdm(desc="creating D(C)...", disable=not self.verbose)
         for dtype_issues, dtype_columns in self._iterate_issues_by_column_dtypes(df):
@@ -63,9 +74,7 @@ class DQIssueDatasetGenerator():
                     modified_df = fitted_transformer.transform(target_df)
 
                     for column in dtype_columns:
-                        dataset[column].append(
-                            (fitted_transformer_signature, modified_df[column])
-                        )
+                        dataset[column].append((fitted_transformer_signature, modified_df[column]))
                     pbar.update(1)
 
         pbar.close()
@@ -74,9 +83,7 @@ class DQIssueDatasetGenerator():
     def _get_parameter_combination(self, params):
         # Put variable parameter values into iterables,
         #   to be compatable to do carterisan product with Itertools.product()
-        corrected_params = {
-            k: v if isinstance(v, Iterable) else [v] for k, v in params.items()
-        }
+        corrected_params = {k: v if isinstance(v, Iterable) else [v] for k, v in params.items()}
 
         for values in product(*corrected_params.values()):
             yield dict(zip(corrected_params.keys(), values))
@@ -96,7 +103,9 @@ class DQIssueDatasetGenerator():
     def _get_categorical_columns(self, df: pd.DataFrame) -> List[str]:
         return list(df.select_dtypes(exclude="number").columns)
 
-    def _set_optional_transformer_parameters(self, transformer: IssueTransfomer) -> IssueTransfomer:
+    def _set_optional_transformer_parameters(
+        self, transformer: IssueTransfomer
+    ) -> IssueTransfomer:
         transformer_params = transformer.get_params()
         if "random_state" in transformer_params:
             transformer.set_params(random_state=self._random_state)

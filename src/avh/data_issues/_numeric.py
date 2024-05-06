@@ -1,15 +1,18 @@
-from typing import Iterable, Optional
 import string
+from typing import Iterable, Optional
 
-import pandas as pd
 import numpy as np
-
-from avh.aliases import Seed, FloatRange
-from avh.data_issues._base import NumericIssueTransformer
+import pandas as pd
 from joblib import Parallel, delayed
 
+from avh.aliases import FloatRange, Seed
+from avh.data_issues._base import NumericIssueTransformer
+
+
 class UnitChange(NumericIssueTransformer):
-    def __init__(self, p: FloatRange = 1.0, m: int = 2, random_state: Seed = None, randomize: bool = True):
+    def __init__(
+        self, p: FloatRange = 1.0, m: int = 2, random_state: Seed = None, randomize: bool = True
+    ):
         self.p = p
         self.m = m
         self.random_state = random_state
@@ -36,8 +39,11 @@ class UnitChange(NumericIssueTransformer):
 
         return new_df
 
+
 class NumericPerturbation(NumericIssueTransformer):
-    def __init__(self, p: FloatRange = 0.5, random_state: Seed = None, n_jobs: Optional[int] = None):
+    def __init__(
+        self, p: FloatRange = 0.5, random_state: Seed = None, n_jobs: Optional[int] = None
+    ):
         self.p = p
         self.random_state = random_state
         self.n_jobs = n_jobs
@@ -53,7 +59,9 @@ class NumericPerturbation(NumericIssueTransformer):
         char_array_n = len(char_array)
         perturbation_length = int(char_array_n * p)
 
-        scaled_indices = [indice % char_array_n for indice in perturbation_indices[: perturbation_length]]
+        scaled_indices = [
+            indice % char_array_n for indice in perturbation_indices[:perturbation_length]
+        ]
 
         if perturbation_length == 0:
             return x
@@ -70,7 +78,11 @@ class NumericPerturbation(NumericIssueTransformer):
         p = self._get_prob()
 
         notna_mask = df.notna().to_numpy()
-        char_counts = stringified_df.map(len, na_action="ignore").to_numpy().T.reshape(-1, 1)[notna_mask.T.flatten()]
+        char_counts = (
+            stringified_df.map(len, na_action="ignore")
+            .to_numpy()
+            .T.reshape(-1, 1)[notna_mask.T.flatten()]
+        )
         total_elements = notna_mask.sum()
 
         max_char_count = char_counts.max()
@@ -91,7 +103,8 @@ class NumericPerturbation(NumericIssueTransformer):
         stringified_df = stringified_df.map(
             lambda x: self._perturb_characters(
                 x, p, next(scaled_perturbation_indices_iter), next(perturbation_characters_iter)
-            ), na_action="ignore"
+            ),
+            na_action="ignore",
         )
 
         # After casting the dataframe into 'string[pyarrow]' dtype, the null values become pd.NA
@@ -116,7 +129,7 @@ class NumericPerturbation(NumericIssueTransformer):
                 continue
             output_col[i] = np.float32(
                 self._perturb_characters(x, p, perturbation_indices[i], perturbation_characters[i])
-                )
+            )
 
         return np.array(output_col)
 
@@ -141,12 +154,13 @@ class NumericPerturbation(NumericIssueTransformer):
         )
 
         results = Parallel(n_jobs=self.n_jobs)(
-            delayed(self._parallel_perturb_column)
-            (df[col].to_numpy(), p, perturbation_indices, perturbation_characters) for col in df.columns
+            delayed(self._parallel_perturb_column)(
+                df[col].to_numpy(), p, perturbation_indices, perturbation_characters
+            )
+            for col in df.columns
         )
 
         return pd.DataFrame(np.array(results).T, columns=df.columns).astype(df.dtypes)
-
 
     def _transform(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.n_jobs is None:

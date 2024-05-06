@@ -1,10 +1,11 @@
 from typing import Iterable
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
-from avh.aliases import Seed, FloatRange
+from avh.aliases import FloatRange, Seed
 from avh.data_issues._base import CategoricalIssueTransformer
+
 
 class CasingChange(CategoricalIssueTransformer):
     def __init__(self, p: FloatRange = 0.5, random_state: Seed = None, randomize: bool = True):
@@ -29,6 +30,8 @@ class CasingChange(CategoricalIssueTransformer):
             indexes = rng.choice(range(n), size=sample_n, replace=False)
             new_df.iloc[indexes] = new_df.iloc[indexes].apply(lambda x: x.str.swapcase(), axis=0)
         else:
-            new_df.iloc[:sample_n] = new_df.iloc[:sample_n].apply(lambda x: x.str.swapcase(), axis=0)
+            new_df.iloc[:sample_n] = new_df.iloc[:sample_n].apply(
+                lambda x: x.str.swapcase(), axis=0
+            )
 
         return new_df

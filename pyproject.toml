@@ -43,6 +43,18 @@ profile = "black"
 [tool.mypy]
 files = "src/**/*.py"
 warn_unused_configs = true
+allow_redefinition = true
+
+[[tool.mypy.overrides]]
+ignore_missing_imports = true
+module = [
+  "pandas.*",
+  "sklearn.*",
+  "tqdm.*",
+  "scipy.*",
+  "joblib.*",
+  "gutenbergpy.*",
+]
 
 [tool.autoflake]
 in_place = true
