@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "miautawn-auto-validate-by-history"
-version = "0.1.0"
+version = "0.1.1"
 description = "Automatic data quality validation for data pipelines"
 authors = ["miautawn <miautawn@gmail.com>"]
 packages = [
