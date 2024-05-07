@@ -106,9 +106,9 @@ class AVH:
     @property
     def default_constraint_estimators(self) -> List[constraints.ConstraintType]:
         return [
-            constraints.CLTConstraint,
             constraints.ChebyshevConstraint,
             constraints.CantelliConstraint,
+            constraints.CLTConstraint,
         ]
 
     @property

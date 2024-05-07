@@ -76,7 +76,7 @@ class KsDist(NumericMetricMixin, TwoDistributionMetric):
         if self._is_empty(new_sample, old_sample):
             return np.inf
 
-        _, ks_p_val = ks_2samp(new_sample, old_sample, nan_policy="omit")
+        _, ks_p_val = ks_2samp(new_sample, old_sample, nan_policy="omit", method="asymp")
         return 1 - ks_p_val
 
 
