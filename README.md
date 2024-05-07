@@ -9,6 +9,13 @@ The authors provide an official repository for their version of the implementati
 * https://github.com/River12/Auto-Validate-by-History
 
 # Setup
+## Installation
+The package is published on pypi index, so you can simply download it from there:
+```bash
+pip install miautawn-auto-validate-by-history
+```
+
+## Build from source
 This project uses [Poetry](https://python-poetry.org/docs/#installation) - python packaging and dependancy management tool.
 
 Install poetry by running the following:
@@ -28,7 +35,11 @@ cd Auto-Validate-By-History-Clone
 poetry install
 ```
 
-You should now be able to run all the example notebooks and create your own scripts!
+By this stage you should be able to use the package and run the notebook examples!
+However, to finally build the package, simply run the following command which will generate both source distribution `.tar.gz` and built distribution `.whl` files.
+```bash
+poetry build
+```
 
 # Usage
 Below is an elamentary example on how to use the provided tools:
