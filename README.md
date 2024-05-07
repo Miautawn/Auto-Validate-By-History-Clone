@@ -33,26 +33,15 @@ You should now be able to run all the example notebooks and create your own scri
 # Usage
 Below is an elamentary example on how to use the provided tools:
 ```python
-# To begin with, we need to define our data quality metric space
-#   that AVH algorithm will consider.
-#
-# In this case, to ilustrate the point, we'll be using only the RowCount and the CompleteRation
-#   metrics that measure the number of records in the table and null value ratio accordingly.
-M = [
-    RowCount,
-    CompleteRatio,
-]
+from avh.data_generation import DataGenerationPipeline, NormalNumericColumn, BetaNumericColumn
 
-# Now, we have to define the constraint estimator space
-#   which the AVH algorithm will consider.
-#
-# Check the documentation for available options,
-#   but in the majority of cases these would work just fine.
-E = [CLTConstraint, ChebyshevConstraint]
+from avh.data_issues import IncreasedNulls
+from avh.auto_validate_by_history import AVH
 
-# Now you have to get some data from which to generate the data quality constraints from!
+# To begin with, we nned to collect a history of data in a form of list of dataframes.
+
 # It's pretty easy to model virtual data tables with our provided classes like so:
-#   * columns - what colums and what type should make up the table
+#   * columns - what colums and what type should make up the table?
 #   * issues - should the natural data have any quirks?
 pipeline = DataGenerationPipeline(
     columns=[
@@ -62,22 +51,35 @@ pipeline = DataGenerationPipeline(
     issues=[
         ("money", [IncreasedNulls(0.05)]),
     ],
+    random_state=42
 )
 
-# Simulating the data pipeline, we have to generate several runs of this table,
-#   thus getting a distribution of columns for AVH to work with.
-#
 # In this case, we'll generate 30 "data pipeline" executions of size ~ N(10000, 30)
 H = [pipeline.generate_normal(10000, 30) for i in range(30)]
 
-# Finally, let's see what data quality constraints does the AVH generate for our data:
-PS = AVH(M, E, columns=["money"]).generate(H, fpr_target=0.01)
-PS["money"]
->> CLTConstraint(0.9500 <= CompleteRatio <= 0.9500, FPR = 0.0077), FPR = 0.007661
+# Finally, let's see what data quality constraints does the AVH generate
+#   for the 'money' column of our data:
+PS = AVH(columns=["money"], random_state=42).generate(H, fpr_target=0.05)
 
-# As you can see, the AVH algorithm while correct in saying that 95% of DataCompleteness
-#   is a statistical invariate (as specified in our data generation) and anything outside it would
-#   mean that data is anomalous from our previous 'training data', it does not take the context
-#   of the metric into the account: in production, you would probably desire CompleteRatio metric to be
-#   in the range of [95% - 100%], thus it is left to the user to make necessary adjustments.
+ps_money = PS["money"]
+>> CLTConstraint(0.9495 <= CompleteRatio <= 0.9515, FPR = 0.0005), FPR = 0.045966
+
+# As you can see, the AVH algorithm correctly identifies a statistical invariate
+#   which in our case was data completeness ratio of 95% (as specified in our data generation).
+#
+#   To the algorithm, any deviation outside this narrow metric interval would appear as an
+#   anomaly and thus would trigger the generated data quality constraint.
+new_data = pipeline.generate_normal(1000, 30)
+new_data_w_issues = IncreasedNulls(p=0.5).fit_transform(new_data)
+
+ps_money.predict(new_data["money"])
+>> True     # the constraint holds
+ps_money.predict(new_data_w_issues["money"])
+>> False    # the constraint doesn't hold
+
+# Naturally, in a real-world scenario you'd like to have as complete data as possible.
+# The library allows the user to make necessary adjustments if one wishes to do so:
+ps_money.constraints[0].u_upper_ = 1.0
+ps_money
+>> CLTConstraint(0.9495 <= CompleteRatio <= 1.0, FPR = 0.0005), FPR = 0.045966
 ```

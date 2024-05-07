@@ -1,13 +1,8 @@
-from typing import List, Optional
+from typing import List
 
 import numpy as np
-from gutenbergpy import textget
 
 from avh.data_generation._base import CategoricalColumn
-
-# predownloading Moby-dick text for random text generation
-raw_book = textget.get_text_by_id(2701)
-raw_book = str(textget.strip_headers(raw_book)).replace("\\n", "")
 
 
 class StaticCategoricalColumn(CategoricalColumn):
@@ -54,14 +49,10 @@ class RandomCategoricalColumn(CategoricalColumn):
         Any other parameters will be forwarded back to parent classes
     """
 
-    def __init__(self, name: str, values: Optional[List[str]] = None, **kwargs):
+    def __init__(self, name: str, values: List[str], **kwargs):
         super().__init__(name, **kwargs)
         self._values = values
 
     def _generate(self, n: int) -> np.ndarray:
         rng = np.random.default_rng(self.random_state)
-        if self._values:
-            return rng.choice(self._values, n, replace=True)
-        else:
-            random_idx = rng.integers(0, len(raw_book) - 20, n)
-            return np.array([raw_book[random_idx[i] : random_idx[i] + 20] for i in range(n)])
+        return rng.choice(self._values, n, replace=True)

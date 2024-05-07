@@ -193,7 +193,7 @@ class AVH:
         DC = self.DC.generate(history[-1])
         columns = self.columns if self.columns else list(history[0].columns)
 
-        for column in tqdm(columns, "Generating P(S for columns..."):
+        for column in tqdm(columns, "Generating P(S for columns...", disable=not self._verbose):
             Q = self._generate_constraint_space(
                 [run[column] for run in history[:-1]], optimise_search_space
             )
