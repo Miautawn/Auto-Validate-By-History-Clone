@@ -11,7 +11,7 @@ The authors provide an official repository for their version of the implementati
 # Features
 The package tries to implement all the features described in the paper, however, some are still missing at this point & will be implemented with future releases!
 ## Unsupported features
-- [ ] Stationarity testing (currently only stationary data is supported).
+- [x] Stationarity testing (currently only stationary data is supported).
 - [ ] Categorical data issues & metrics (currently only numerical data is fully supported).
 
 # Setup
