@@ -21,6 +21,7 @@ statsmodels = "^0.14.1"
 joblib = "^1.4.0"
 
 [tool.poetry.group.dev.dependencies]
+plotly = "^5.22.0"
 jupyter-black = "^0.3.4"
 notebook = "^7.1.0"
 pre-commit = "^3.7.0"
@@ -28,7 +29,6 @@ black = "^24.4.2"
 isort = "^5.13.2"
 mypy = "^1.10.0"
 autoflake = "^2.3.1"
-
 
 [build-system]
 requires = ["poetry-core"]
