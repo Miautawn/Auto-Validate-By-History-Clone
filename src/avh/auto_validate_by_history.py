@@ -1,15 +1,18 @@
 import logging
-from typing import Dict, List, Optional, Set, Tuple, Union, cast
+import warnings
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union, cast
 
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from statsmodels.tsa.stattools import adfuller
 from tqdm import tqdm
 
 import avh.constraints as constraints
 import avh.data_issues as issues
 import avh.metrics as metrics
 import avh.utility_functions as utils
+import avh.utility_functions as utility_functions
 from avh.aliases import Seed
 
 
@@ -32,14 +35,26 @@ class AVH:
         E: Optional[List[constraints.ConstraintType]] = None,
         DC: Optional[issues.DQIssueDatasetGenerator] = None,
         columns: Optional[List[str]] = None,
-        time_differencing: bool = False,
+        optimise_search_space: Union[bool, str] = "auto",
+        time_differencing: Union[str, int] = 0,
         random_state: Seed = None,
         verbose: int = 1,
         n_jobs: Optional[int] = None,
     ):
 
+        assert optimise_search_space in [
+            True,
+            False,
+            "auto",
+        ], "`optimise_search_space` can only be one of [True, False, 'auto']"
+
+        assert (
+            time_differencing == "auto" or cast(int, time_differencing) >= 0
+        ), "`time_differencing` can be either 'auto' or a non negative integer"
+
         self.columns = columns
         self.time_differencing = time_differencing
+        self.optimise_search_space = optimise_search_space
         self.verbose = verbose
         self.random_state = random_state
         self.n_jobs = n_jobs
@@ -166,17 +181,11 @@ class AVH:
 
     @utils.debug_timeit(f"{__name__}.AVH")
     def generate(
-        self,
-        history: List[pd.DataFrame],
-        fpr_target: float,
-        optimise_search_space: Union[bool, str] = "auto",
+        self, history: List[pd.DataFrame], fpr_target: float
     ) -> Dict[str, constraints.ConjuctivDQProgram]:
-        assert optimise_search_space in [
-            True,
-            False,
-            "auto",
-        ], "`optimise_search_space` can only be one of [True, False, 'auto']"
-        if optimise_search_space == "auto":
+
+        optimise_search_space = self.optimise_search_space
+        if self.optimise_search_space == "auto":
             optimise_search_space = True if fpr_target <= 0.05 else False
 
         if self.n_jobs is None:
@@ -198,12 +207,21 @@ class AVH:
                 [run[column] for run in history[:-1]], optimise_search_space
             )
 
-            PS[column] = self._generate_conjuctive_dq_program(Q, DC[column], fpr_target)
+            if len(Q) == 0:
+                # Generate empty conjunctive DQ program for ths column,
+                #   if no constraints were selected for it.
+                #
+                #   For example, if the column is not stationary in any metric.
+                PS[column] = constraints.ConjuctivDQProgram()
+            else:
+                PS[column] = self._generate_conjuctive_dq_program(Q, DC[column], fpr_target)
 
         return PS
 
     def _generate_parallel_worker(self, column, history, DC, fpr_target, optimise_search_space):
         Q = self._generate_constraint_space(history, optimise_search_space)
+        if len(Q) == 0:
+            return column, constraints.ConjuctivDQProgram()
         return column, self._generate_conjuctive_dq_program(Q, DC, fpr_target)
 
     @utils.debug_timeit(f"{__name__}.AVH")
@@ -239,28 +257,70 @@ class AVH:
     ) -> np.ndarray:
 
         default_beta_ranges = (1.0, 50.0, 1.0)
-        if optimise_search_space:
-            beta_start, beta_end, beta_increment = self.default_production_beta_ranges.get(
-                constraint_estimator, default_beta_ranges
-            )
-        else:
-            beta_start, beta_end, beta_increment = self.default_beta_ranges.get(
-                constraint_estimator, default_beta_ranges
+        beta_ranges_source = (
+            self.default_production_beta_ranges
+            if optimise_search_space
+            else self.default_beta_ranges
+        )
+
+        beta_start, beta_end, beta_increment = beta_ranges_source.get(
+            constraint_estimator, default_beta_ranges
+        )
+        return np.arange(beta_start, beta_end, beta_increment)
+
+    def _get_timeseries_differencing_parameters(
+        self, metric_history: List[float]
+    ) -> Tuple[bool, int, Callable]:
+        """
+        Returns timeseries differencing window and preprocessing function
+            that achieves metric history stationarity.
+        """
+        stationarity_status, time_diff_window, metric_preproc_func = (
+            True,
+            cast(int, self.time_differencing),
+            utility_functions.identity,
+        )
+        if self.time_differencing == "auto":
+            status, diff_window, preproc_fuc = self._timeseries_difference(metric_history)
+            stationarity_status, time_diff_window, metric_preproc_func = (
+                status,
+                diff_window,
+                preproc_fuc,
             )
 
-        return np.arange(beta_start, beta_end, beta_increment)
+        return stationarity_status, time_diff_window, metric_preproc_func
 
     @utils.debug_timeit(f"{__name__}.AVH")
     def _generate_constraint_space(
-        self, history: List[pd.Series], optimise_search_space=False
+        self, history: List[pd.Series], optimise_search_space: bool
     ) -> List[constraints.Constraint]:
         Q = []
+
         for metric in self.M:
             if not metric.is_column_compatable(history[0].dtype):
                 continue
 
             precalculated_metric_history = cast(List[float], metric.calculate(history))
-            precalculated_std = np.nanstd(precalculated_metric_history)
+            stationarity_status, time_diff_window, metric_preproc_func = (
+                self._get_timeseries_differencing_parameters(precalculated_metric_history)
+            )
+
+            if stationarity_status == False:
+                warnings.warn(
+                    f"Could not find stationarity for metric {metric}, skipping it...",
+                    RuntimeWarning,
+                )
+                continue
+
+            preprocessed_metric_history = precalculated_metric_history.copy()
+            if time_diff_window > 0:
+                preprocessed_metric_history = (
+                    pd.Series(metric_preproc_func(precalculated_metric_history))
+                    .diff(time_diff_window)[time_diff_window:]
+                    .tolist()
+                )
+
+            precalculated_std = np.nanstd(preprocessed_metric_history)
 
             for constraint_estimator in self.E:
                 if not constraint_estimator.is_metric_compatable(metric):
@@ -269,13 +329,17 @@ class AVH:
                 for beta in self._get_beta_range(constraint_estimator, optimise_search_space):
                     q = constraint_estimator(
                         metric,
+                        time_differencing_window=time_diff_window,
+                        metric_preprocessing_function=metric_preproc_func,
                     ).fit(
                         history,
-                        hotload_history=precalculated_metric_history,
+                        metric_history=precalculated_metric_history,
+                        hotload_metric_history=preprocessed_metric_history,
                         beta=precalculated_std * beta,
                         strategy="raw",
                     )
                     Q.append(q)
+
         return Q
 
     @utils.debug_timeit(f"{__name__}.AVH")
@@ -353,20 +417,23 @@ class AVH:
         q_indexes = list(range(len(Q)))
         ps = constraints.ConjuctivDQProgram()
         while current_fpr < fpr_target and len(q_indexes) != 0:
-            recall_increments = [
-                constraint_recalls[idx].difference(ps.recall) for idx in q_indexes
-            ]
+
+            recall_increments = []
+            recall_weighted_increments = []
+
+            for idx in q_indexes:
+                recall_increment = constraint_recalls[idx].difference(ps.recall)
+                recall_increments.append(recall_increment)
+
+                # +1 to avoid dividing by 0
+                weighted_recall_increment = len(recall_increment) / (Q[idx].expected_fpr_ + 1)
+                recall_weighted_increments.append(weighted_recall_increment)
 
             # stop if there are no more recall improvements possible
-            if len(max(recall_increments)) == 0:
+            if max(recall_weighted_increments) == 0:
                 break
 
-            best_idx = np.argmax(
-                [
-                    len(recall_set) / (Q[idx].expected_fpr_ + 1)  # +1 is to avoid division by 0
-                    for idx, recall_set in zip(q_indexes, recall_increments)
-                ]
-            )
+            best_idx = np.argmax(recall_weighted_increments)
 
             best_constraint = Q[q_indexes[best_idx]]
             if best_constraint.expected_fpr_ + current_fpr <= fpr_target:
@@ -392,3 +459,44 @@ class AVH:
         ps = self._find_optimal_conjunctive_dq_program(Q, individual_recalls, fpr_target)
 
         return ps if len(ps.recall) > len(ps_singleton.recall) else ps_singleton
+
+    @utils.debug_timeit(f"{__name__}.AVH")
+    def _timeseries_difference(self, metric_history: List[float]) -> Tuple[bool, int, Callable]:
+        """
+        Performs time series differencing search to find stationary form
+            of the provided metric history distribution.
+
+        Returns:
+        bool - whether the stationarity was achieved
+        int - found lag window that achieved stationarity
+        Callable - metric preprocessing function
+        """
+
+        def _is_stationary(timeseries: pd.Series) -> bool:
+            adf_results = adfuller(timeseries)
+            adf_value, adf_crit_value = adf_results[0], adf_results[4]["5%"]
+            return not (adf_value > adf_crit_value)
+
+        def _search_for_stationarity(timeseries: pd.Series):
+            for l in range(1, 11):
+                timeseries_with_lag = timeseries.diff(l)[l:]
+                if _is_stationary(timeseries_with_lag):
+                    return True, l
+            return False, 0
+
+        timeseries = pd.Series(metric_history)
+
+        if _is_stationary(timeseries):
+            return True, 0, utility_functions.identity
+
+        status, window = _search_for_stationarity(timeseries)
+        if status:
+            return status, window, utility_functions.identity
+
+        # Perform lag transformation with log transformed timeseries
+        log_timeseries = pd.Series(utility_functions.safe_log(metric_history))
+        status, window = _search_for_stationarity(log_timeseries)
+        if status:
+            return status, window, utility_functions.safe_log
+
+        return False, 0, utility_functions.identity

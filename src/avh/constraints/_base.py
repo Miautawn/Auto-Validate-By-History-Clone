@@ -1,9 +1,10 @@
-from typing import List, Optional, Tuple, cast
+from typing import Callable, List, Optional, Tuple, cast
 
 import pandas as pd
 from sklearn.base import BaseEstimator, check_is_fitted
 
 import avh.metrics as metrics
+import avh.utility_functions as utility_functions
 
 
 class Constraint(BaseEstimator):
@@ -33,8 +34,12 @@ class Constraint(BaseEstimator):
     def __init__(
         self,
         metric: metrics.MetricType,
+        time_differencing_window: int = 0,
+        metric_preprocessing_function: Callable = utility_functions.identity,
     ):
         self.metric = metric
+        self.time_differencing_window = time_differencing_window
+        self.metric_preprocessing_function = metric_preprocessing_function
 
     def __repr__(self):
         if hasattr(self, "_is_fitted") and self._is_fitted:
@@ -51,24 +56,43 @@ class Constraint(BaseEstimator):
 
     def _get_metric_repr(self):
         metric_repr = self.metric.__name__
+        preprocessng_func_repr = self.metric_preprocessing_function.__function_repr__
+        if preprocessng_func_repr != "identity":
+            metric_repr = "{}({})".format(preprocessng_func_repr, metric_repr)
+        if self.time_differencing_window != 0:
+            metric_repr = "{}.diff({})".format(metric_repr, self.time_differencing_window)
         return metric_repr
 
     def fit(
         self,
         X: List[pd.Series],
         y=None,
-        hotload_history: Optional[List[float]] = None,
+        metric_history: Optional[List[float]] = None,
+        hotload_metric_history: Optional[List[float]] = None,
         **kwargs,
     ):
+        """
+        X - raw data
+        metric_history - calculated metric history without any pre/post-processing
+        hotload_metric_history - final metric history including pre/post-processing
+            and timeseries differencing. Constraint interval will be estimated directly on this.
+        """
 
         assert self.is_metric_compatable(self.metric), (
             f"The {self.metric.__name__} is not compatible with " f"{self.__class__.__name__}"
         )
 
-        self.metric_history_ = cast(
-            List[float],
-            hotload_history if hotload_history is not None else self.metric.calculate(X),
+        self.raw_metric_history_ = (
+            metric_history
+            if metric_history is not None
+            else cast(List[float], self.metric.calculate(X))
         )
+        self.metric_history_ = (
+            hotload_metric_history
+            if hotload_metric_history is not None
+            else self._preprocess_metric_history(self.raw_metric_history_)
+        )
+
         self._fit(self.metric_history_, raw_history=X, **kwargs)
 
         self._is_fitted = True
@@ -83,10 +107,36 @@ class Constraint(BaseEstimator):
     def predict(self, column: pd.Series, **kwargs) -> bool:
         check_is_fitted(self)
 
-        m = cast(float, self.metric.calculate(column))
+        if issubclass(self.metric, metrics.SingleDistributionMetric):
+            m = self.metric.calculate(column)
+        else:
+            m = self.metric.calculate(column, self.last_reference_sample_)
+
+        m = self._preprocess_metric(cast(float, m))
         prediction = self._predict(m, **kwargs)
 
         return prediction
 
     def _predict(self, m: float, **kwargs) -> bool:
+        print(self.raw_metric_history_)
+        print(self.metric_history_)
+        print(m)
         return self.u_lower_ <= m <= self.u_upper_
+
+    def _preprocess_metric(self, metric: float) -> float:
+        m = self.metric_preprocessing_function(metric)
+        if self.time_differencing_window > 0:
+            m = m - self.metric_preprocessing_function(
+                self.raw_metric_history_[-self.time_differencing_window]
+            )
+
+        return m
+
+    def _preprocess_metric_history(self, metric_history: List[float]) -> List[float]:
+        preprocessed_metric_history = self.metric_preprocessing_function(metric_history)
+        if self.time_differencing_window > 0:
+            time_differenced_history = (
+                pd.Series(preprocessed_metric_history).diff(self.time_differencing_window).tolist()
+            )
+            return time_differenced_history[self.time_differencing_window :]
+        return preprocessed_metric_history

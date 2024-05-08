@@ -1,10 +1,9 @@
 import math
-from typing import List, Tuple, cast
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
 from scipy import integrate
-from sklearn.base import check_is_fitted
 
 import avh.metrics as metrics
 from avh.constraints._base import Constraint
@@ -16,7 +15,9 @@ class ConstantConstraint(Constraint):
         which operates on manually provided threshold values
     """
 
-    def __init__(self, metric: metrics.MetricType, u_lower: float, u_upper: float, expected_fpr):
+    def __init__(
+        self, metric: metrics.MetricType, u_lower: float, u_upper: float, expected_fpr: float
+    ):
         super().__init__(metric)
 
         # technically not following the sklearn style guide :(
@@ -57,16 +58,6 @@ class ChebyshevConstraint(Constraint):
         else:
             self.expected_fpr_ = var / beta**2
 
-    def predict(self, column: pd.Series, **kwargs) -> bool:
-        check_is_fitted(self)
-
-        if issubclass(self.metric, metrics.SingleDistributionMetric):
-            m = self.metric.calculate(column)
-        else:
-            m = self.metric.calculate(column, self.last_reference_sample_)
-
-        return self._predict(cast(float, m), **kwargs)
-
 
 class CantelliConstraint(Constraint):
     """
@@ -104,14 +95,6 @@ class CantelliConstraint(Constraint):
             self.expected_fpr_ = 0.0
         else:
             self.expected_fpr_ = var / (var + beta**2)
-
-    def predict(self, column: pd.Series, **kwargs) -> bool:
-        check_is_fitted(self)
-
-        m = self.metric.calculate(column, self.last_reference_sample_)
-        prediction = self._predict(cast(float, m), **kwargs)
-
-        return prediction
 
 
 class CLTConstraint(Constraint):

@@ -13,7 +13,7 @@ class ConjuctivDQProgram:
         contributions: Optional[List[Set[str]]] = None,
     ):
         self.constraints = constraints if constraints else []
-        self.recall = recall if recall else set({})
+        self.recall = recall if recall else set()
         self.contributions = contributions if contributions else []
 
     def __repr__(self):

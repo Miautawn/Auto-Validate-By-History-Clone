@@ -53,7 +53,8 @@ module = [
   "sklearn.*",
   "tqdm.*",
   "scipy.*",
-  "joblib.*"
+  "joblib.*",
+  "statsmodels.*"
 ]
 
 [tool.autoflake]

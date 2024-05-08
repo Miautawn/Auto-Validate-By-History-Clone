@@ -42,6 +42,13 @@ def diff(data: Iterable, period: int) -> np.ndarray:
 
 
 def function_repr(repr):
+    """
+    Decorator function to set the '__function_repr__' field
+        for the targetted function.
+
+    Used in scikit-learn representations.
+    """
+
     def wrapper(func):
         setattr(func, "__function_repr__", repr)
         return func
@@ -58,13 +65,13 @@ def identity(x: Any) -> Any:
 
 
 @function_repr("log")
-def safe_log(x: Union[Number, Iterable]) -> np.ndarray:
+def safe_log(x: Union[Number, Iterable]) -> Union[Number, np.ndarray]:
     """
     Perform log(x), but with safeguards
         against cases where x == 0
     """
     data = np.array(x)
-    log_data = np.log(data, out=np.zeros_like(data, dtype=np.float32), where=(data != 0))
+    log_data = np.log(data, where=(data != 0))
 
     if log_data.shape:
         return log_data
