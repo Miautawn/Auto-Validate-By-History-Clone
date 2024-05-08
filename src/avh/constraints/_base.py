@@ -118,9 +118,6 @@ class Constraint(BaseEstimator):
         return prediction
 
     def _predict(self, m: float, **kwargs) -> bool:
-        print(self.raw_metric_history_)
-        print(self.metric_history_)
-        print(m)
         return self.u_lower_ <= m <= self.u_upper_
 
     def _preprocess_metric(self, metric: float) -> float:
