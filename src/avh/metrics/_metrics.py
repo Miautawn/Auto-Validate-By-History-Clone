@@ -7,7 +7,7 @@ from avh.metrics._base import SingleDistributionMetric
 
 class RowCount(SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
+    def _calculate(cls, column: pd.Series) -> float:
         return len(column)
 
 
@@ -19,16 +19,16 @@ class DistinctRatio(SingleDistributionMetric):
     """
 
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
+    def _calculate(cls, column: pd.Series) -> float:
         return column.nunique(dropna=False) / len(column)
 
 
 class CompleteRatio(SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
+    def _calculate(cls, column: pd.Series) -> float:
         if column.empty:
             return 0.0
-        return column.count() / column.size
+        return column.count() / len(column)
 
 
 #### Two distribution metrics

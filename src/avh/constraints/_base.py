@@ -25,11 +25,11 @@ class Constraint(BaseEstimator):
         * predict - given a value, check if it violates the constraint.
     """
 
-    compatable_metrics: Tuple[metrics.MetricType, ...] = (metrics.Metric,)
+    COMPATABLE_METRICS: Tuple[metrics.MetricType, ...] = (metrics.Metric,)
 
     @classmethod
-    def is_metric_compatable(self, metric: metrics.MetricType) -> bool:
-        return issubclass(metric, self.compatable_metrics)
+    def is_metric_compatable(cls, metric: metrics.MetricType) -> bool:
+        return issubclass(metric, cls.COMPATABLE_METRICS)
 
     def __init__(
         self,

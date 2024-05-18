@@ -64,7 +64,7 @@ class CantelliConstraint(Constraint):
     Cantelli!
     """
 
-    compatable_metrics: Tuple[metrics.MetricType, ...] = (
+    COMPATABLE_METRICS: Tuple[metrics.MetricType, ...] = (
         metrics.EMD,
         metrics.KsDist,
         metrics.CohenD,
@@ -98,7 +98,8 @@ class CantelliConstraint(Constraint):
 
 
 class CLTConstraint(Constraint):
-    compatable_metrics: Tuple[metrics.MetricType, ...] = (
+
+    COMPATABLE_METRICS: Tuple[metrics.MetricType, ...] = (
         metrics.RowCount,
         metrics.Mean,
         metrics.MeanStringLength,

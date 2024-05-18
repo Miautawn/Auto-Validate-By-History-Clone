@@ -153,7 +153,7 @@ class NumericPerturbation(NumericIssueTransformer):
             list(string.digits), size=(total_elements, max_perturbed_char_count), replace=True
         )
 
-        results = Parallel(n_jobs=self.n_jobs)(
+        results = Parallel(n_jobs=self.n_jobs, timeout=99999)(
             delayed(self._parallel_perturb_column)(
                 df[col].to_numpy(), p, perturbation_indices, perturbation_characters
             )

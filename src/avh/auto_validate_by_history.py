@@ -63,10 +63,9 @@ class AVH:
         self.E = E if E is not None else self.default_constraint_estimators
 
         self.DC = (
-            DC
-            if DC is not None
+            DC if DC is not None
             else self._get_default_issue_dataset_generator(
-                verbose=self._verbose, random_state=self.random_state
+                verbose=self._verbose, random_state=self.random_state, n_jobs=self.n_jobs
             )
         )
 
@@ -165,7 +164,7 @@ class AVH:
         }
 
     def _get_default_issue_dataset_generator(
-        self, verbose: int = 0, random_state: Seed = 42
+        self, verbose: int = 0, random_state: Seed = 42, n_jobs: Optional[int] = None
     ) -> issues.DQIssueDatasetGenerator:
         """
         Constructs a DQIssueDatasetTransformer instance
@@ -176,7 +175,7 @@ class AVH:
             issues=self.default_data_quality_issues,
             verbose=verbose,
             random_state=random_state,
-            n_jobs=self.n_jobs,
+            n_jobs=n_jobs,
         )
 
     @utils.debug_timeit(f"{__name__}.AVH")
@@ -204,7 +203,7 @@ class AVH:
 
         for column in tqdm(columns, "Generating P(S for columns...", disable=not self._verbose):
             Q = self._generate_constraint_space(
-                [run[column] for run in history[:-1]], optimise_search_space
+                [run[column] for run in history], optimise_search_space
             )
 
             if len(Q) == 0:
@@ -233,10 +232,10 @@ class AVH:
         DC = self.DC.generate(history[-1])
         columns = self.columns if self.columns else list(history[0].columns)
 
-        results = Parallel(n_jobs=self.n_jobs, return_as="generator_unordered")(
+        results = Parallel(n_jobs=self.n_jobs, timeout=99999, return_as="generator_unordered")(
             delayed(self._generate_parallel_worker)(
                 column,
-                [run[column] for run in history[:-1]],
+                [run[column] for run in history],
                 DC[column],
                 fpr_target,
                 optimise_search_space,
@@ -256,7 +255,7 @@ class AVH:
         self, constraint_estimator: constraints.ConstraintType, optimise_search_space: bool
     ) -> np.ndarray:
 
-        default_beta_ranges = (1.0, 50.0, 1.0)
+        fallback_beta_ranges = (1.0, 50.0, 1.0)
         beta_ranges_source = (
             self.default_production_beta_ranges
             if optimise_search_space
@@ -264,7 +263,7 @@ class AVH:
         )
 
         beta_start, beta_end, beta_increment = beta_ranges_source.get(
-            constraint_estimator, default_beta_ranges
+            constraint_estimator, fallback_beta_ranges
         )
         return np.arange(beta_start, beta_end, beta_increment)
 
@@ -363,6 +362,8 @@ class AVH:
         """
         individual_recalls: List[set] = [set() for _ in Q]
 
+        # TODO: THIS DOES NOT ACCOUNT FOR TIME SERIES DIFFERENCING!
+
         def _cache_metric_from_constraint(constraint: constraints.Constraint, data: pd.Series):
             cached_metric = constraint.metric
             if issubclass(cached_metric, metrics.SingleDistributionMetric):
@@ -413,6 +414,7 @@ class AVH:
         constraint_recalls: List[Set[str]],
         fpr_target: float,
     ) -> constraints.ConjuctivDQProgram:
+
         current_fpr = 0.0
         q_indexes = list(range(len(Q)))
         ps = constraints.ConjuctivDQProgram()

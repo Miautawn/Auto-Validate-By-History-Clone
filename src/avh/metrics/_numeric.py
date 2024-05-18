@@ -10,48 +10,48 @@ from avh.metrics._base import NumericMetricMixin, SingleDistributionMetric, TwoD
 
 class Min(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
-        if self._is_empty(column):
+    def _calculate(cls, column: pd.Series) -> float:
+        if cls._is_empty(column):
             return 0.0
         return column.min()
 
 
 class Max(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
-        if self._is_empty(column):
+    def _calculate(cls, column: pd.Series) -> float:
+        if cls._is_empty(column):
             return 0.0
         return column.max()
 
 
 class Mean(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
-        if self._is_empty(column):
+    def _calculate(cls, column: pd.Series) -> float:
+        if cls._is_empty(column):
             return 0.0
         return column.mean()
 
 
 class Median(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
-        if self._is_empty(column):
+    def _calculate(cls, column: pd.Series) -> float:
+        if cls._is_empty(column):
             return 0.0
         return np.nanmedian(column)
 
 
 class Sum(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
-        if self._is_empty(column):
+    def _calculate(cls, column: pd.Series) -> float:
+        if cls._is_empty(column):
             return 0.0
         return column.sum()
 
 
 class Range(NumericMetricMixin, SingleDistributionMetric):
     @classmethod
-    def _calculate(self, column: pd.Series) -> float:
-        if self._is_empty(column):
+    def _calculate(cls, column: pd.Series) -> float:
+        if cls._is_empty(column):
             return 0.0
         return column.max() - column.min()
 
@@ -61,8 +61,8 @@ class Range(NumericMetricMixin, SingleDistributionMetric):
 
 class EMD(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
-    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
-        if self._is_empty(new_sample, old_sample):
+    def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if cls._is_empty(new_sample, old_sample):
             return np.inf
 
         # Have to drop na, since if there is at least 1 null value,
@@ -72,8 +72,8 @@ class EMD(NumericMetricMixin, TwoDistributionMetric):
 
 class KsDist(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
-    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
-        if self._is_empty(new_sample, old_sample):
+    def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if cls._is_empty(new_sample, old_sample):
             return np.inf
 
         _, ks_p_val = ks_2samp(new_sample, old_sample, nan_policy="omit", method="asymp")
@@ -82,14 +82,14 @@ class KsDist(NumericMetricMixin, TwoDistributionMetric):
 
 class CohenD(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
-    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
+    def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
         """
         We use null-ignoring operations
         """
         n_new, n_old = new_sample.count(), old_sample.count()
 
         # Return np.inf if there isn't enough proper data for calculations
-        if self._is_empty(new_sample, old_sample) or n_new + n_old <= 2:
+        if cls._is_empty(new_sample, old_sample) or n_new + n_old <= 2:
             return np.inf
 
         degrees_of_freedom = n_new + n_old - 2
@@ -107,8 +107,8 @@ class CohenD(NumericMetricMixin, TwoDistributionMetric):
 
 class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
-    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
-        if self._is_empty(new_sample, old_sample):
+    def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if cls._is_empty(new_sample, old_sample):
             return np.inf
 
         # Don't have to normalize it, as scipy.stats.entropy() will do it for us
@@ -128,8 +128,8 @@ class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
 
 class JsDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
-    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float:
-        if self._is_empty(new_sample, old_sample):
+    def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
+        if cls._is_empty(new_sample, old_sample):
             return np.inf
 
         # Don't have to normalize it, as scipy.distance.jensenshannon() will do it for us

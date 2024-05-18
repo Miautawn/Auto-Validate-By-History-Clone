@@ -10,12 +10,12 @@ class Metric(ABC):
     """
 
     @classmethod
-    def is_column_compatable(self, dtype: Any) -> bool:
+    def is_column_compatable(cls, dtype: Any) -> bool:
         return True
 
     @classmethod
     @abstractmethod
-    def calculate(self, *args) -> Union[float, List[float]]:
+    def calculate(cls, *args) -> Union[float, List[float]]:
         """
         Method for calculating the target metric from given data
         """
@@ -25,33 +25,33 @@ class Metric(ABC):
 # Metric dtype mixins
 class NumericMetricMixin:
     @classmethod
-    def is_column_compatable(self, dtype: Any) -> bool:
+    def is_column_compatable(cls, dtype: Any) -> bool:
         return pd.api.types.is_numeric_dtype(dtype)
 
 
 class CategoricalMetricMixin:
     @classmethod
-    def is_column_compatable(self, dtype: Any) -> bool:
+    def is_column_compatable(cls, dtype: Any) -> bool:
         return not pd.api.types.is_numeric_dtype(dtype)
 
 
 # Different input type subclasses
 class SingleDistributionMetric(Metric):
     @classmethod
-    def calculate(self, data: Union[pd.Series, List[pd.Series]]) -> Union[float, List[float]]:
+    def calculate(cls, data: Union[pd.Series, List[pd.Series]]) -> Union[float, List[float]]:
         """
         Method for calculating the target metric from given data
         """
         if isinstance(data, list):
-            return list(map(self._calculate, data))
-        return self._calculate(data)
+            return list(map(cls._calculate, data))
+        return cls._calculate(data)
 
     @classmethod
     @abstractmethod
-    def _calculate(self, data: pd.Series) -> float: ...
+    def _calculate(cls, data: pd.Series) -> float: ...
 
     @classmethod
-    def _is_empty(self, data: pd.Series) -> bool:
+    def _is_empty(cls, data: pd.Series) -> bool:
         if data.count() == 0:
             return True
         return False
@@ -60,21 +60,21 @@ class SingleDistributionMetric(Metric):
 class TwoDistributionMetric(Metric):
     @classmethod
     def calculate(
-        self, data: Union[pd.Series, List[pd.Series]], referene_data: Optional[pd.Series] = None
+        cls, data: Union[pd.Series, List[pd.Series]], referene_data: Optional[pd.Series] = None
     ) -> Union[float, List[float]]:
         """
         Funny magic
         """
         if referene_data is not None:
-            return self._calculate(data, referene_data)
-        return [self._calculate(data[i], data[i - 1]) for i in range(1, len(data))]
+            return cls._calculate(data, referene_data)
+        return [cls._calculate(data[i], data[i - 1]) for i in range(1, len(data))]
 
     @classmethod
     @abstractmethod
-    def _calculate(self, new_sample: pd.Series, old_sample: pd.Series) -> float: ...
+    def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float: ...
 
     @classmethod
-    def _is_empty(self, data: pd.Series, reference_data: pd.Series) -> bool:
+    def _is_empty(cls, data: pd.Series, reference_data: pd.Series) -> bool:
         if data.count() == 0 or reference_data.count() == 0:
             return True
         return False

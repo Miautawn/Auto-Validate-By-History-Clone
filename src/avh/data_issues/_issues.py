@@ -183,7 +183,7 @@ class DistributionChange(IssueTransfomer):
     def _transform_parallel(self, df: pd.DataFrame):
         p = self._get_prob()
 
-        results = Parallel(n_jobs=self.n_jobs, prefer="threads")(
+        results = Parallel(n_jobs=self.n_jobs, timeout=99999, prefer="threads")(
             delayed(self._process_column)(df[col], p, self.take_last) for col in df.columns
         )
 
