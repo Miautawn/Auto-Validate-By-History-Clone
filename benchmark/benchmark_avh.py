@@ -2,6 +2,7 @@ from typing import List, Tuple, Iterable, Optional
 from scipy.stats import ks_2samp
 from joblib import Parallel, delayed
 from avh.auto_validate_by_history import AVH
+from avh.constraints import Constraint, ConjuctivDQProgram
 import pickle
 import numpy as np
 import pandas as pd
@@ -33,18 +34,50 @@ class AutoValidateByHistory:
             ]
         )
 
+    def _optimally_construct_ps(
+            self, avh: AVH, Q: List[Constraint], constraint_recalls: List[set], fpr_budget: float
+        ) -> ConjuctivDQProgram:
+        """
+        A helper function that uses hidden AVH methods to calculate PS.
+        The PS creation steps are identical to avh._generate_conjuctive_dq_program().
+
+        This method is used to speed up the calculations for different fpr values 
+            when individual constrain recalls are already precalculated.
+        """
+        PS_singleton = avh._find_optimal_singleton_conjuctive_dq_program(
+            Q, constraint_recalls, fpr_budget
+        )
+
+        PS_conjunctive = avh._find_optimal_conjunctive_dq_program(
+            Q, constraint_recalls, fpr_budget
+        )
+
+        return (
+            PS_conjunctive
+            if len(PS_conjunctive.recall) >= len(PS_singleton.recall)
+            else PS_singleton
+        )
+
     def _test_precision(self, column_history: List[pd.DataFrame], column: str):
         fp_per_threshold = np.zeros(shape=len(self.fpr_budgets))
 
         avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False)
+        dc_generator = avh._get_default_issue_dataset_generator()
+        
         for i in range(self.total_windows_):
             train_h = column_history[i : i + self.train_window_size]
             test_h = column_history[i + self.train_window_size]
 
-            for j, fpr_budget in enumerate(self.fpr_budgets):
-                PS = avh.generate(train_h, fpr_target=fpr_budget)
+            Q = avh._generate_constraint_space(
+                [run[column] for run in train_h], optimise_search_space=False
+            )
+            DC = dc_generator.generate(train_h[-1])[column]
+            constraint_recalls = avh._precalculate_constraint_recalls_fast(Q, DC)
 
-                column_prediction = not PS[column].predict(test_h[column])
+            for j, fpr_budget in enumerate(self.fpr_budgets):
+                PS = self._optimally_construct_ps(avh, Q, constraint_recalls, fpr_budget)
+
+                column_prediction = not PS.predict(test_h[column])
                 fp_per_threshold[j] += column_prediction
 
         return fp_per_threshold
@@ -59,14 +92,21 @@ class AutoValidateByHistory:
         tp_per_threshold = np.zeros(shape=len(self.fpr_budgets))
 
         avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False)
+        dc_generator = avh._get_default_issue_dataset_generator()
+
         train_h = column_history[:self.train_window_size]
 
-        for j, fpr_budget in enumerate(self.fpr_budgets):
-            PS = avh.generate(train_h, fpr_target=fpr_budget)
+        Q = avh._generate_constraint_space(
+                [run[column] for run in train_h], optimise_search_space=False
+            )
+        DC = dc_generator.generate(train_h[-1])[column]
+        constraint_recalls = avh._precalculate_constraint_recalls_fast(Q, DC)
 
-            for recall_test in column_perturbations:
-                column_prediction = not PS[column].predict(recall_test[1])
-                tp_per_threshold[j] += column_prediction
+        for j, fpr_budget in enumerate(self.fpr_budgets):
+            PS = self._optimally_construct_ps(avh, Q, constraint_recalls, fpr_budget)
+
+            column_predictions = [not PS.predict(data) for issue, data in column_perturbations]
+            tp_per_threshold[j] += sum(column_predictions)
 
         return tp_per_threshold
 

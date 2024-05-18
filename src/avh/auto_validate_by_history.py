@@ -460,7 +460,7 @@ class AVH:
 
         ps = self._find_optimal_conjunctive_dq_program(Q, individual_recalls, fpr_target)
 
-        return ps if len(ps.recall) > len(ps_singleton.recall) else ps_singleton
+        return ps if len(ps.recall) >= len(ps_singleton.recall) else ps_singleton
 
     @utils.debug_timeit(f"{__name__}.AVH")
     def _timeseries_difference(self, metric_history: List[float]) -> Tuple[bool, int, Callable]:
