@@ -1,12 +1,30 @@
+"""
+Unfortunately, the tensorflow-data-validation is really incompatable with 
+    currently selected dependencies, which makes it super hard to install it
+    besides them.
+
+As an alternative, you can install only the dependencies needed for tfdv and run this
+    script independantly!
+
+To do so, first clean the current virtual environment:
+```bash
+poetry env remove --all
+```
+
+Then install all the necessary libraries:
+```bash
+poetry shell
+>> pip install tensorflow-data-validation, tqdm
+```
+"""
+
+import tensorflow_data_validation as tfdv
 from typing import List, Tuple, Iterable, Optional
-from scipy.stats import ks_2samp
 from joblib import Parallel, delayed
-from avh.auto_validate_by_history import AVH
 import pickle
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from avh.metrics import JsDivergence
 
 import pathlib
 
@@ -16,19 +34,36 @@ class TVDF:
         self.thresholds = (
             np.array(thresholds)
             if thresholds is not None
-            else np.array([0.000001, 0.00001, 0.0001, 0.001, 0.01, 
-                          0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 
-                          0.9, 1.0, 10, 100])
+            else np.arange(0, 1.0, 0.05)
         )
+
+    def _parse_prediction(self, anomalies) -> bool:
+        """
+        Check if the TFDV report object contains reported anomalies
+        """
+        for feature_name, anomaly in anomalies.anomaly_info.items():
+            if anomaly.short_description != 'No anomalies found':
+                return True
+        return False
 
     def _test_precision(self, column_history: List[pd.DataFrame], column: str) -> np.ndarray:
         fp_per_threshold = np.zeros(shape=len(self.thresholds))
-        for j in range(self.total_windows_):
-            train_sample = column_history[j + self.train_window_size - 1][column]
-            test_sample = column_history[j + self.train_window_size][column]
+        for i in range(self.total_windows_):
+            train_df = column_history[i + self.train_window_size - 1][[column]]
+            test_df = column_history[i + self.train_window_size][[column]]
 
-            js_divergence = JsDivergence.calculate(test_sample, train_sample)
-            fp_per_threshold += js_divergence > self.thresholds
+            train_stats = tfdv.generate_statistics_from_dataframe(train_df)
+            train_schema = tfdv.infer_schema(statistics=train_stats)
+            test_stats = tfdv.generate_statistics_from_dataframe(test_df)
+
+            for j, threshold in enumerate(self.thresholds):
+                feature = tfdv.get_feature(train_schema, column)
+                feature.drift_comparator.jensen_shannon_divergence.threshold = threshold
+
+                prediction = tfdv.validate_statistics(
+                    statistics=test_stats, schema=train_schema, previous_statistics=train_stats
+                )
+                fp_per_threshold[j] += self._parse_prediction(prediction)
 
         return fp_per_threshold
 
@@ -41,19 +76,23 @@ class TVDF:
         ) -> np.ndarray:
         tp_per_threshold = np.zeros(shape=len(self.thresholds))
 
-        train_sample = column_history[self.train_window_size - 1][column]
-        original_test_sample = column_history[self.train_window_size]
+        train_df = column_history[self.train_window_size][[column]]
 
-        for recall_test in column_perturbations:
-            test_sample = recall_test[1]
+        train_stats = tfdv.generate_statistics_from_dataframe(train_df)
+        train_schema = tfdv.infer_schema(statistics=train_stats)
 
-            # if the test sample is empty, automatically return a true positive
-            #   since it's realistic to think that such a drastic change should be caught by default
-            if test_sample.count() == 0:
-                tp_per_threshold += 1
-            else:
-                js_divergence = JsDivergence.calculate(test_sample, train_sample)
-                tp_per_threshold += js_divergence > self.thresholds
+        for j, threshold in enumerate(self.thresholds):
+            feature = tfdv.get_feature(train_schema, column)
+            feature.drift_comparator.jensen_shannon_divergence.threshold = threshold
+
+            for issue, data in column_perturbations:
+                test_df = data.to_frame()
+                test_stats = tfdv.generate_statistics_from_dataframe(test_df)
+
+                prediction = tfdv.validate_statistics(
+                    statistics=test_stats, schema=train_schema, previous_statistics=train_stats
+                )
+                tp_per_threshold[j] += self._parse_prediction(prediction)
 
         return tp_per_threshold
 
@@ -100,8 +139,8 @@ if __name__ == "__main__":
     column_history = benchmark_data["column_history"]
     column_perturbations = benchmark_data["column_perturbations"]
 
-    tfdv = TVDF()
-    col_fp_per_threshold, col_tp_per_threshold = tfdv.test_algorithm(column_history, column_perturbations)
+    tfdv_alg = TVDF()
+    col_fp_per_threshold, col_tp_per_threshold = tfdv_alg.test_algorithm(column_history, column_perturbations)
 
     # calculate the actual metrics
     col_precision_per_threshold = col_tp_per_threshold / (col_fp_per_threshold + col_tp_per_threshold)
