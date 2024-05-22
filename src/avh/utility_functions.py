@@ -27,18 +27,8 @@ def debug_timeit(local_logger_name=None):
     return decorator
 
 
-def diff(data: Iterable, period: int) -> np.ndarray:
-    """
-    Perform difference of the elements separated by the period.
-    (Useful for time series differencing)
-
-    The resulting array is prepended with the np.nan
-        to keep the shap of the original array
-    """
-    data = np.array(data)
-    if period == 0:
-        return data
-    return np.concatenate((np.full(period, np.nan), data[period:] - data[:-period]))
+def nanptp(arr):
+    return np.nanmax(arr) - np.nanmin(arr)
 
 
 def function_repr(repr):

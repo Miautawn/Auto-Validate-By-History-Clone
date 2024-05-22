@@ -11,10 +11,12 @@ class ConjuctivDQProgram:
         constraints: Optional[List[Constraint]] = None,
         recall: Optional[Set[str]] = None,
         contributions: Optional[List[Set[str]]] = None,
+        individual_recalls: Optional[List[Set[str]]] = None
     ):
         self.constraints = constraints if constraints else []
         self.recall = recall if recall else set()
         self.contributions = contributions if contributions else []
+        self.individual_recalls = individual_recalls if individual_recalls else []
 
     def __repr__(self):
         return "{constraints}, FPR = {fpr:4f}".format(

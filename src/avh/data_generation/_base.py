@@ -114,17 +114,14 @@ class NumericColumn(DataColumn):
         return self._dtype
 
     @abstractmethod
-    def _update_parameters(self, n: int, i: int) -> None:
+    def _update_parameters() -> None:
         """
         Template method for applying the `parameter_function`
             to data generation parameters.
 
         Parameters
         ----------
-        n: int
-            The length of the column
-        i: int
-            The i'th call of the column generation.
+
         """
         ...
 
@@ -140,7 +137,7 @@ class NumericColumn(DataColumn):
         data = np.clip(data, self._minimum, self._maximum)
 
         if self._parameter_function is not None:
-            self._update_parameters(n, i)
+            self._update_parameters()
 
         return pd.Series(
             data.astype(self.dtype),

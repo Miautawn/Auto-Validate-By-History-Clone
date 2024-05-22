@@ -63,7 +63,7 @@ class EMD(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
         if cls._is_empty(new_sample, old_sample):
-            return np.inf
+            return np.nan
 
         # Have to drop na, since if there is at least 1 null value,
         #   the scipy.wasserstein_distance() will return null
@@ -74,7 +74,7 @@ class KsDist(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
         if cls._is_empty(new_sample, old_sample):
-            return np.inf
+            return np.nan
 
         _, ks_p_val = ks_2samp(new_sample, old_sample, nan_policy="omit", method="asymp")
         return 1 - ks_p_val
@@ -88,9 +88,9 @@ class CohenD(NumericMetricMixin, TwoDistributionMetric):
         """
         n_new, n_old = new_sample.count(), old_sample.count()
 
-        # Return np.inf if there isn't enough proper data for calculations
+        # Return np.nan if there isn't enough proper data for calculations
         if cls._is_empty(new_sample, old_sample) or n_new + n_old <= 2:
-            return np.inf
+            return np.nan
 
         degrees_of_freedom = n_new + n_old - 2
 
@@ -109,20 +109,20 @@ class KlDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
         if cls._is_empty(new_sample, old_sample):
-            return np.inf
+            return np.nan
 
-        # Don't have to normalize it, as scipy.stats.entropy() will do it for us
-        p, e = np.histogram(new_sample.dropna(), 10)
-        q, _ = np.histogram(old_sample.dropna(), e)
+        bins = np.linspace(
+            min(new_sample.min(), old_sample.min()), max(new_sample.max(), old_sample.max()),
+            50
+        )
 
-        # If the new sample is that widely different such that reference sample
-        #   doesn't have any values across it's histogram edges,
-        #   don't bother computing and just return np.inf
-        if sum(q) == 0:
-            return np.inf
+        p_hist, _ = np.histogram(new_sample.dropna(), bins=bins)
+        q_hist, _ = np.histogram(old_sample.dropna(), bins=bins)
 
-        # Finding support intersections where there are no 0's
-        p, q = zip(*[(x, y) for x, y in zip(p, q) if x != 0 and y != 0])
+        # Add a small value to avoid division by zero or log of zero
+        p = p_hist / len(new_sample) + 1e-10
+        q = q_hist / len(old_sample) + 1e-10
+
         return entropy(p, q)
 
 
@@ -130,18 +130,18 @@ class JsDivergence(NumericMetricMixin, TwoDistributionMetric):
     @classmethod
     def _calculate(cls, new_sample: pd.Series, old_sample: pd.Series) -> float:
         if cls._is_empty(new_sample, old_sample):
-            return np.inf
+            return np.nan
 
-        # Don't have to normalize it, as scipy.distance.jensenshannon() will do it for us
-        p, e = np.histogram(new_sample.dropna(), 10)
-        q, _ = np.histogram(old_sample.dropna(), e)
+        bins = np.linspace(
+            min(new_sample.min(), old_sample.min()), max(new_sample.max(), old_sample.max()),
+            50
+        )
 
-        # If the new sample is that widely different such that reference sample
-        #   doesn't have any values across it's histogram edges,
-        #   don't bother computing and just return np.inf
-        if sum(q) == 0:
-            return np.inf
+        p_hist, _ = np.histogram(new_sample.dropna(), bins=bins)
+        q_hist, _ = np.histogram(old_sample.dropna(), bins=bins)
 
-        # Finding support intersections where there are no 0's
-        p, q = zip(*[(x, y) for x, y in zip(p, q) if x != 0 and y != 0])
+        # Add a small value to avoid division by zero or log of zero
+        p = p_hist / len(new_sample) + 1e-10
+        q = q_hist / len(old_sample) + 1e-10
+
         return jensenshannon(p, q)

@@ -6,7 +6,9 @@ import pandas as pd
 from scipy import integrate
 
 import avh.metrics as metrics
+import avh.utility_functions as utility_functions
 from avh.constraints._base import Constraint
+
 
 
 class ConstantConstraint(Constraint):

@@ -15,7 +15,6 @@ import avh.utility_functions as utils
 import avh.utility_functions as utility_functions
 from avh.aliases import Seed
 
-
 class AVH:
     """
     Returns a dictionary with ConjuctivDQProgram for a column
@@ -36,6 +35,7 @@ class AVH:
         DC: Optional[issues.DQIssueDatasetGenerator] = None,
         columns: Optional[List[str]] = None,
         optimise_search_space: Union[bool, str] = "auto",
+        fpr_budget_fill_strategy: Optional[str] = None,
         time_differencing: Union[str, int] = 0,
         random_state: Seed = None,
         verbose: int = 1,
@@ -48,6 +48,10 @@ class AVH:
             "auto",
         ], "`optimise_search_space` can only be one of [True, False, 'auto']"
 
+        assert fpr_budget_fill_strategy in [
+            None, "max_recall", "min_fpr", "balanced"
+        ], "`fpr_budget_fill_strategy` can only be one of [None, 'max_recall', 'min_fpr', 'balanced']"
+
         assert (
             time_differencing == "auto" or cast(int, time_differencing) >= 0
         ), "`time_differencing` can be either 'auto' or a non negative integer"
@@ -55,6 +59,7 @@ class AVH:
         self.columns = columns
         self.time_differencing = time_differencing
         self.optimise_search_space = optimise_search_space
+        self.fpr_budget_fill_strategy = fpr_budget_fill_strategy
         self.verbose = verbose
         self.random_state = random_state
         self.n_jobs = n_jobs
@@ -279,12 +284,10 @@ class AVH:
             cast(int, self.time_differencing),
             utility_functions.identity,
         )
+
         if self.time_differencing == "auto":
-            status, diff_window, preproc_fuc = self._timeseries_difference(metric_history)
             stationarity_status, time_diff_window, metric_preproc_func = (
-                status,
-                diff_window,
-                preproc_fuc,
+                self._timeseries_difference(metric_history)
             )
 
         return stationarity_status, time_diff_window, metric_preproc_func
@@ -299,7 +302,7 @@ class AVH:
             if not metric.is_column_compatable(history[0].dtype):
                 continue
 
-            precalculated_metric_history = cast(List[float], metric.calculate(history))
+            precalculated_metric_history = cast(List[float], metric.calculate(history)) 
             stationarity_status, time_diff_window, metric_preproc_func = (
                 self._get_timeseries_differencing_parameters(precalculated_metric_history)
             )
@@ -325,6 +328,25 @@ class AVH:
                 if not constraint_estimator.is_metric_compatable(metric):
                     continue
 
+                # If the standard deviation/variance for this metric is 0,
+                #   then it means we have found a statistical invariate!
+                # This means, that we can dismiss any other variants of constraints
+                #   since they would be the same in terms of the constraint interval
+                #   and expected false positive rate!
+                if precalculated_std == 0.0:
+                    q = constraint_estimator(
+                        metric,
+                        time_differencing_window=time_diff_window,
+                        metric_preprocessing_function=metric_preproc_func,
+                    ).fit(
+                        history,
+                        metric_history=precalculated_metric_history,
+                        hotload_metric_history=preprocessed_metric_history,
+                        beta=0,
+                    )
+                    Q.append(q)
+                    break
+
                 for beta in self._get_beta_range(constraint_estimator, optimise_search_space):
                     q = constraint_estimator(
                         metric,
@@ -338,7 +360,6 @@ class AVH:
                         strategy="raw",
                     )
                     Q.append(q)
-
         return Q
 
     @utils.debug_timeit(f"{__name__}.AVH")
@@ -362,27 +383,22 @@ class AVH:
         """
         individual_recalls: List[set] = [set() for _ in Q]
 
-        # TODO: THIS DOES NOT ACCOUNT FOR TIME SERIES DIFFERENCING!
-
         def _cache_metric_from_constraint(constraint: constraints.Constraint, data: pd.Series):
-            cached_metric = constraint.metric
-            if issubclass(cached_metric, metrics.SingleDistributionMetric):
-                precalculated_metric = cached_metric.calculate(data)
-            else:
-                precalculated_metric = cached_metric.calculate(
-                    data, constraint.last_reference_sample_
-                )
+            cached_metric_type = constraint.metric
+            cached_metric_value = constraint._calculate_prediction_metric(data)
 
-            return cached_metric, precalculated_metric
+            return cached_metric_type, cached_metric_value
 
         for issue, data in DC:
-            cached_metric, precalculated_metric = _cache_metric_from_constraint(Q[0], data)
+            cached_metric_type, cached_metric_value = _cache_metric_from_constraint(Q[0], data)
+
             for idx, constraint in enumerate(Q):
-                if not issubclass(constraint.metric, cached_metric):
-                    cached_metric, precalculated_metric = _cache_metric_from_constraint(
+                if not issubclass(constraint.metric, cached_metric_type):
+                    cached_metric_type, cached_metric_value = _cache_metric_from_constraint(
                         constraint, data
                     )
-                if not constraint._predict(precalculated_metric):
+
+                if not constraint._predict(cached_metric_value):
                     individual_recalls[idx].add(issue)
 
         return individual_recalls
@@ -415,43 +431,71 @@ class AVH:
         fpr_target: float,
     ) -> constraints.ConjuctivDQProgram:
 
+        constraint_overflow = False
         current_fpr = 0.0
         q_indexes = list(range(len(Q)))
-        ps = constraints.ConjuctivDQProgram()
-        while current_fpr < fpr_target and len(q_indexes) != 0:
+        PS = constraints.ConjuctivDQProgram()
+
+        while len(q_indexes) != 0:
 
             recall_increments = []
-            recall_weighted_increments = []
+            weighted_recall_increments = []
 
             for idx in q_indexes:
-                recall_increment = constraint_recalls[idx].difference(ps.recall)
+                recall_increment = constraint_recalls[idx].difference(PS.recall)
+
+                if constraint_overflow == False:
+                    # np.inf so the np.argmax would select the statistical invariates by default!
+                    weighted_recall_increment = (
+                        np.inf if Q[idx].expected_fpr_ == 0.0
+                        else len(recall_increment) / (Q[idx].expected_fpr_)
+                    )
+                else:
+                    if self.fpr_budget_fill_strategy == "max_recall":
+                        weighted_recall_increment = len(constraint_recalls[idx])
+                    elif self.fpr_budget_fill_strategy == "min_fpr":
+                        weighted_recall_increment = -Q[idx].expected_fpr_
+                    elif self.fpr_budget_fill_strategy == "balanced":
+                        weighted_recall_increment = len(constraint_recalls[idx]) / Q[idx].expected_fpr_
+                
                 recall_increments.append(recall_increment)
+                weighted_recall_increments.append(weighted_recall_increment)
 
-                # +1 to avoid dividing by 0
-                weighted_recall_increment = len(recall_increment) / (Q[idx].expected_fpr_ + 1)
-                recall_weighted_increments.append(weighted_recall_increment)
+            if max(weighted_recall_increments) == 0:
+                if self.fpr_budget_fill_strategy is None:
+                    break
+                else:
+                    if constraint_overflow == False:
+                        constraint_overflow = True
+                        continue
 
-            # stop if there are no more recall improvements possible
-            if max(recall_weighted_increments) == 0:
-                break
-
-            best_idx = np.argmax(recall_weighted_increments)
-
+            best_idx = np.argmax(weighted_recall_increments)
             best_constraint = Q[q_indexes[best_idx]]
+
             if best_constraint.expected_fpr_ + current_fpr <= fpr_target:
                 current_fpr += best_constraint.expected_fpr_
-                ps.constraints.append(best_constraint)
-                ps.recall.update(recall_increments[best_idx])
-                ps.contributions.append(recall_increments[best_idx])
+                PS.constraints.append(best_constraint)
+                PS.recall.update(recall_increments[best_idx])
+                PS.contributions.append(recall_increments[best_idx])
+                PS.individual_recalls.append(constraint_recalls[q_indexes[best_idx]])
 
-            q_indexes.pop(best_idx)
+                # Cleanup.
+                # Leave only indexes that correspond to constraints with different metrics
+                #   since it's useless to have different intervals of the same metric.
+                q_indexes = [
+                    remaining_idx for remaining_idx in q_indexes
+                    if Q[remaining_idx].metric != best_constraint.metric
+                ]
+            else:
+                q_indexes.pop(best_idx)
 
-        return ps
+        return PS
 
     @utils.debug_timeit(f"{__name__}.AVH")
     def _generate_conjuctive_dq_program(
         self, Q: List[constraints.Constraint], DC: List[Tuple[str, pd.Series]], fpr_target: float
     ):
+
         individual_recalls = self._precalculate_constraint_recalls_fast(Q, DC)
 
         ps_singleton = self._find_optimal_singleton_conjuctive_dq_program(
@@ -475,7 +519,18 @@ class AVH:
         """
 
         def _is_stationary(timeseries: pd.Series) -> bool:
-            adf_results = adfuller(timeseries)
+
+            # If the std deviation is approximately 0, then return as stationary,
+            #   since it's practically a statistical invariate
+            if round(np.nanstd(timeseries), 7) == 0.0:
+                return True
+
+            # When the variance of the timeseries is super low but not 0,
+            #   the adfuler might round down a value, which would cause
+            #   np.log() operation to be performed on 0, thus throwing an error
+            with np.errstate(divide="ignore"):
+                adf_results = adfuller(timeseries)
+
             adf_value, adf_crit_value = adf_results[0], adf_results[4]["5%"]
             return not (adf_value > adf_crit_value)
 
@@ -496,9 +551,11 @@ class AVH:
             return status, window, utility_functions.identity
 
         # Perform lag transformation with log transformed timeseries
-        log_timeseries = pd.Series(utility_functions.safe_log(metric_history))
-        status, window = _search_for_stationarity(log_timeseries)
-        if status:
-            return status, window, utility_functions.safe_log
+        #   if there are no negative values
+        if any(pd.Series(timeseries) < 0) == False:
+            log_timeseries = pd.Series(utility_functions.safe_log(metric_history))
+            status, window = _search_for_stationarity(log_timeseries)
+            if status:
+                return status, window, utility_functions.safe_log
 
         return False, 0, utility_functions.identity

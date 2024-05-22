@@ -1,12 +1,27 @@
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import numpy as np
 import pandas as pd
 import pickle
 import pathlib
 from tqdm import tqdm
+from avh.data_issues import IncreasedNulls
 from avh.data_generation import UniformNumericColumn, NormalNumericColumn, BetaNumericColumn, DataGenerationPipeline
 from avh.auto_validate_by_history import AVH
+
+def generate_column_issues(rng, column_name, dtype=None):
+    column_issues = []
+
+    # Adding null values, if dtype is not integer
+    # Since you can't have int columns with np.nan values :(
+    if dtype is not np.int32:
+        if rng.choice([True, False], p=[0.3, 0.7]) == True:
+            null_lower_bound = 0.0
+            null_upper_bound = rng.uniform(0.1, 0.5)
+            column_issues.append(IncreasedNulls(p=(null_lower_bound, null_upper_bound)))
+
+    return (column_name, column_issues)
+
 
 def generate_uniform_column(rng, dtype, sign, scale, shift, column_name):
     low = scale
@@ -15,19 +30,64 @@ def generate_uniform_column(rng, dtype, sign, scale, shift, column_name):
     if sign == -1:
         low, high = high * sign, low * sign
 
-    return UniformNumericColumn(column_name, low, high, dtype=dtype)
+    parameter_func = None
+    if rng.choice([True, False]) == True:
+        increase = shift * 0.1 * sign
+        parameter_func = lambda scale, shift, l, u: (
+            scale,
+            shift + increase,
+            l,
+            u,
+        )
+
+    return UniformNumericColumn(
+        column_name, low, high, dtype=dtype, parameter_function=parameter_func
+    )
 
 
 def generate_normal_column(rng, dtype, sign, scale, shift, column_name):
     mean = shift * sign
     std = scale
-    return NormalNumericColumn(column_name, mean, std, dtype=dtype)
+
+    parameter_func = None
+    if rng.choice([True, False]) == True:
+        increase = shift * 0.1 * sign
+        parameter_func = lambda scale, shift, mu, sigma: (
+            scale,
+            shift + increase,
+            mu,
+            sigma,
+        )
+
+    return NormalNumericColumn(
+        column_name, mean, std, dtype=dtype, parameter_function=parameter_func
+    )
 
 
 def generate_beta_column(rng, dtype, sign, scale, shift, column_name):
     alfa = rng.uniform(0.1, 10)
     beta = rng.uniform(0.1, 10)
-    return BetaNumericColumn(column_name, alfa, beta, scale=scale * sign, shift=shift, dtype=dtype)
+
+    parameter_func = None
+    if rng.choice([True, False]) == True:
+        increase = shift * 0.1 * sign
+        parameter_func = lambda scale, shift, alfa, beta: (
+            scale,
+            shift + increase,
+            alfa,
+            beta,
+        )
+
+    return BetaNumericColumn(
+        column_name,
+        alfa,
+        beta,
+        scale=scale,
+        shift=shift * sign,
+        dtype=dtype,
+        parameter_function=parameter_func,
+    )
+
 
 def generate_column(rng, column_name, dtype=None, distribution=None, sign=None):
 
@@ -57,28 +117,81 @@ def generate_column(rng, column_name, dtype=None, distribution=None, sign=None):
     return column
 
 
-def generate_column_history(n: int, rng: np.random.Generator) -> List[List[pd.DataFrame]]:
+def generate_column_history(
+    n_col: int, n_hist: int, rng: np.random.Generator
+) -> List[List[pd.DataFrame]]:
 
     # Each 'column' will comprised of 2 column pipeline,
     #   where first column will be the actual data column,
     #   while the other one will be a supporting column,
     #   used for data issue generation such as schema change
-    numeric_columns_pipelines = []
-    for i in range(n):
+    column_pipelines = []
+    column_pipeline_patterns = []
+    column_pipeline_pattern_settings = []
+    for i in range(n_col):
 
-        column_name = f"numeric_{i}"
-        column_neighbor_name = f"numeric_{i}_neighbor"
+        col_name = f"numeric_{i}"
+        col_neighbour_name = f"numeric_{i}_neighbour"
 
-        column = generate_column(rng, column_name)
-        neighbor_column = generate_column(rng, column_neighbor_name, dtype=column.dtype)
+        col = generate_column(rng, col_name)
+        col_issues = generate_column_issues(rng, col_name, dtype=col.dtype)
 
-        column_pipeline = DataGenerationPipeline([column, neighbor_column], random_state=rng)
-        numeric_columns_pipelines.append(column_pipeline)
+        neighbour_col = generate_column(rng, col_neighbour_name, dtype=col.dtype)
+        neighbour_col_issues = generate_column_issues(rng, col_neighbour_name, dtype=col.dtype)
 
-    data = [
-        [column_pipeline.generate_normal(20000, 1000) for column_pipeline in numeric_columns_pipelines]
-        for i, _ in enumerate(tqdm(range(60), desc="Generating column executions..."))
-    ]
+        column_pipeline = DataGenerationPipeline(
+            columns=[col, neighbour_col],
+            issues=[col_issues, neighbour_col_issues],
+            random_state=rng,
+        )
+
+        pipeline_pattern = rng.choice(
+            ["constant", "normal", "seasonal", "constant_growth", "periodic_growth"],
+            p=[0.1, 0.2, 0.2, 0.25, 0.25],
+        )
+        pipeline_pattern_settings = {}
+        if pipeline_pattern == "seasonal":
+            pipeline_pattern_settings["period"] = rng.integers(1, 5)
+
+        if pipeline_pattern == "constant_growth":
+            pipeline_pattern_settings["increment"] = rng.uniform(100, 200)
+            
+        if pipeline_pattern == "periodic_growth":
+            pipeline_pattern_settings["period"] = rng.integers(2, 8)
+            pipeline_pattern_settings["increment"] = rng.uniform(100, 500)
+
+        column_pipelines.append(column_pipeline)
+        column_pipeline_patterns.append(pipeline_pattern)
+        column_pipeline_pattern_settings.append(pipeline_pattern_settings)
+
+    # generating the pieline outputs
+    data = []
+    for i, _ in enumerate(tqdm(range(n_hist), desc="Generating column executions...")):
+        time_step = []
+        for (
+            column_pipeline, pattern, pattern_settings,
+        ) in zip(column_pipelines, column_pipeline_patterns, column_pipeline_pattern_settings):
+            if pattern == "constant":
+                pipeline_execution = column_pipeline.generate(20000)
+
+            elif pattern == "normal":
+                pipeline_execution = column_pipeline.generate_normal(20000, 1000)
+
+            elif pattern == "seasonal":
+                normalised_unit = pattern_settings["period"] * (2 * np.pi) / n_hist
+                y = np.cos(i * normalised_unit)
+                pipeline_execution = column_pipeline.generate(int(y * 5000 + 25000))
+
+            elif pattern == "constant_growth":
+                increment = int(i * pattern_settings["increment"])
+                pipeline_execution = column_pipeline.generate(20000 + increment)
+
+            elif pattern == "periodic_growth":
+                increment = int((i // pattern_settings["period"]) * pattern_settings["increment"])
+                pipeline_execution = column_pipeline.generate(20000 + increment)
+
+            time_step.append(pipeline_execution)
+        data.append(time_step)
 
     return data
 
@@ -103,9 +216,10 @@ def generate_column_perturbations(
 if __name__ == "__main__":
 
     rng = np.random.default_rng(42)
-    n = 10
+    n_hist = 60
+    n_col = 30
 
-    column_history = generate_column_history(n, rng)
+    column_history = generate_column_history(n_col, n_hist, rng)
     column_perturbations = generate_column_perturbations(column_history, rng)
 
     benchmark_dir = pathlib.Path(__file__).parent

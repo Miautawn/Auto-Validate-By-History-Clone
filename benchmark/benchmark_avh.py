@@ -61,7 +61,7 @@ class AutoValidateByHistory:
     def _test_precision(self, column_history: List[pd.DataFrame], column: str):
         fp_per_threshold = np.zeros(shape=len(self.fpr_budgets))
 
-        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False)
+        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False, fpr_budget_fill_strategy="max_recall")
         dc_generator = avh._get_default_issue_dataset_generator()
         
         for i in range(self.total_windows_):
@@ -91,7 +91,7 @@ class AutoValidateByHistory:
         ) -> np.ndarray:
         tp_per_threshold = np.zeros(shape=len(self.fpr_budgets))
 
-        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False)
+        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False, fpr_budget_fill_strategy="max_recall")
         dc_generator = avh._get_default_issue_dataset_generator()
 
         train_h = column_history[:self.train_window_size]

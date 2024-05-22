@@ -29,10 +29,10 @@ class UniformNumericColumn(NumericColumn):
         rng = np.random.default_rng(self.random_state)
         return rng.uniform(self._lower_bound, self._upper_bound, n)
 
-    def _update_parameters(self, n: int, i: int):
+    def _update_parameters(self):
         assert self._parameter_function is not None  # Mypy complains otherwise
-        self._lower_bound, self._upper_bound = self._parameter_function(
-            n, i, self._lower_bound, self._upper_bound
+        self._scale, self._shift, self._lower_bound, self._upper_bound = self._parameter_function(
+            self._scale, self._shift, self._lower_bound, self._upper_bound
         )
 
 
@@ -62,9 +62,11 @@ class NormalNumericColumn(NumericColumn):
         rng = np.random.default_rng(self.random_state)
         return rng.normal(self._mean, self._std, n)
 
-    def _update_parameters(self, n: int, i: int):
+    def _update_parameters(self):
         assert self._parameter_function is not None  # Mypy complains otherwise
-        self._mean, self._std = self._parameter_function(n, i, self._mean, self._std)
+        self._scale, self._shift, self._mean, self._std = self._parameter_function(
+            self._scale, self._shift, self._mean, self._std
+        )
 
 
 class BetaNumericColumn(NumericColumn):
@@ -97,6 +99,8 @@ class BetaNumericColumn(NumericColumn):
         rng = np.random.default_rng(self.random_state)
         return rng.beta(self._alfa, self._beta, n)
 
-    def _update_parameters(self, n: int, i: int):
+    def _update_parameters(self):
         assert self._parameter_function is not None  # Mypy complains otherwise
-        self._alfa, self._beta = self._parameter_function(n, i, self._alfa, self._beta)
+        self._scale, self._shift, self._alfa, self._beta = self._parameter_function(
+            self._scale, self._shift, self._alfa, self._beta
+        )
