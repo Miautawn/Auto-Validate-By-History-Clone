@@ -114,7 +114,7 @@ class NumericColumn(DataColumn):
         return self._dtype
 
     @abstractmethod
-    def _update_parameters() -> None:
+    def _update_parameters(self) -> None:
         """
         Template method for applying the `parameter_function`
             to data generation parameters.
