@@ -61,7 +61,7 @@ class AutoValidateByHistory:
     def _test_precision(self, column_history: List[pd.DataFrame], column: str):
         fp_per_threshold = np.zeros(shape=len(self.fpr_budgets))
 
-        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False, fpr_budget_fill_strategy="max_recall")
+        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False)
         dc_generator = avh._get_default_issue_dataset_generator()
         
         for i in range(self.total_windows_):
@@ -91,7 +91,7 @@ class AutoValidateByHistory:
         ) -> np.ndarray:
         tp_per_threshold = np.zeros(shape=len(self.fpr_budgets))
 
-        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False, fpr_budget_fill_strategy="max_recall")
+        avh = AVH(columns=[column], verbose=0, random_state=42, optimise_search_space=False)
         dc_generator = avh._get_default_issue_dataset_generator()
 
         train_h = column_history[:self.train_window_size]
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     avg_recall_per_threshold = col_recall_per_threshold.mean(axis=0)
 
     metrics = {"precision": avg_precision_per_threshold, "recall": avg_recall_per_threshold}
-    with open(f"{benchmark_dir}/benchmark_avh_metrics.pickle", "wb") as f:
+    with open(f"{benchmark_dir}/benchmark_avh_diet_metrics.pickle", "wb") as f:
         pickle.dump(metrics, f)
 
     

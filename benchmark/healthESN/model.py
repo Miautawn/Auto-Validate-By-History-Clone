@@ -9,7 +9,6 @@ from sklearn.base import BaseEstimator, TransformerMixin, OutlierMixin
 from sklearn.linear_model import LinearRegression
 from scipy.special import expit
 from enum import Enum
-import matplotlib.pyplot as plt
 import tqdm
 
 from typing import List, Tuple, Callable, Optional
@@ -131,33 +130,6 @@ class HealthESN(BaseEstimator, OutlierMixin):
         scores = np.concatenate([np.zeros(X.shape[0]-scores.shape[0]) + np.nan, scores])
 
         return scores
-    
-    def predict_paper(self, X: np.ndarray) -> np.ndarray:
-        outputs = np.zeros((X.shape[0] - self.window_size + 1, X.shape[1]))
-        for i in tqdm.trange(self.window_size, X.shape[0]-1):
-            d = X[i - self.window_size + 1:i+2].copy()
-            t = np.zeros((self.window_size, X.shape[1]))
-            last_state = None
-            last_output = None
-            for j in range(self.window_size):
-                for p in range(self.window_size):
-                    x = (d[p], last_state, last_output)
-                    y = d[p+1]
-                    state = np.asarray(self.esn.fit_transform(x, y))
-                    last_state = state
-                    last_output = self.w_out.predict(state)
-                t[j] = last_output
-                d[j] = t[j]
-            outputs[i-self.window_size + 1] = self.sigma.dot(t)
-
-        score = np.mean((X[self.window_size - 1:] - outputs)**2, axis=1)
-
-        plt.plot(X[self.window_size:], label="data")
-        plt.plot(outputs, label="predicted")
-        plt.legend()
-        plt.show()
-
-        return score
 
     def fit_predict(self, X, y=None):
         self.fit(X)

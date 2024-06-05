@@ -217,7 +217,7 @@ if __name__ == "__main__":
 
     rng = np.random.default_rng(42)
     n_hist = 60
-    n_col = 30
+    n_col = 1000
 
     column_history = generate_column_history(n_col, n_hist, rng)
     column_perturbations = generate_column_perturbations(column_history, rng)
